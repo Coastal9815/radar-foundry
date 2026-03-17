@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch wx-core; trigger watchdog if radar stale (backup for wx-core launchd)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/scott/wx/radar-foundry/bin/watch_wx_core.sh
+WorkingDirectory=/home/scott/wx/radar-foundry
+StandardOutput=append:/tmp/mrw_watch_wx_core.log
+StandardError=append:/tmp/mrw_watch_wx_core.log
+
+[Install]
+WantedBy=default.target

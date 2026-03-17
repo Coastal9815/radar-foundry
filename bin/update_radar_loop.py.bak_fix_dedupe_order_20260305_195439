@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+def run(cmd, env=None):
+    r = subprocess.run(cmd, text=True, capture_output=True, env=env)
+    if r.returncode != 0:
+        print(r.stdout, end="")
+        print(r.stderr, end="", file=sys.stderr)
+        raise SystemExit(r.returncode)
+    return r
+
+def iso_to_z(dt_str):
+    dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+    return dt.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--site", required=True)
+    ap.add_argument("--remote-host", default="192.168.2.2")
+    ap.add_argument("--remote-user", default="scott")
+    ap.add_argument("--remote-base", required=True)
+    ap.add_argument("--keep", type=int, default=72)
+    ap.add_argument("--scratch-base", default=str(Path.home() / "wx-scratch" / "radar-foundry"))
+    args = ap.parse_args()
+
+    site = args.site.upper()
+    scratch_base = Path(args.scratch_base).expanduser()
+    raw_dir = scratch_base / "raw_level2_live"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+
+    env = os.environ.copy()
+    env["WX_SCRATCH_BASE"] = str(scratch_base)
+
+    fetch = run(["./bin/fetch_latest_level2.py", site], env=env)
+    meta = json.loads(fetch.stdout)
+    level2_file = Path(meta["out_path"]).expanduser().resolve()
+    frame_ts = iso_to_z(meta["last_modified_utc"])
+
+    remote_dir = args.remote_base.rstrip("/")
+    publish_cmd = [
+        "./bin/publish_radar_frame.py",
+        str(level2_file),
+        "--site", site,
+        "--remote-host", args.remote_host,
+        "--remote-user", args.remote_user,
+        "--remote-dir", remote_dir,
+    ]
+    run(publish_cmd, env=env)
+
+    out_png = Path.home() / "wx" / "radar-foundry" / "out" / f"{site}_L2_nn_rgba_1600.png"
+    latest_name = f"{site}_L2_nn_rgba_1600.png"
+    staged = Path.home() / "wx" / "radar-foundry" / "out" / f"{site}_{frame_ts}.png"
+    shutil.copy2(out_png, staged)
+
+    ssh_target = f"{args.remote_user}@{args.remote_host}"
+    latest_remote = f"{args.remote_user}@{args.remote_host}:{remote_dir}/{latest_name}"
+    run(["scp", str(out_png), latest_remote], env=env)
+
+    latest_hash = sha256_file(out_png)
+    hash_cmd = f"""python3 - <<'EOF'
+import hashlib
+from pathlib import Path
+p = Path(r"{remote_dir}") / "{latest_name}"
+if not p.exists():
+    print("")
+else:
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    print(h.hexdigest())
+EOF"""
+    prev_hash = run(["ssh", ssh_target, hash_cmd], env=env).stdout.strip()
+
+    added_new_frame = False
+    if prev_hash != latest_hash:
+        remote_target = f"{args.remote_user}@{args.remote_host}:{remote_dir}/{frame_ts}.png"
+        run(["scp", str(staged), remote_target], env=env)
+        added_new_frame = True
+
+    staged.unlink(missing_ok=True)
+
+    remote_script = f"""
+set -e
+cd {remote_dir}
+ls -1 *.png 2>/dev/null | sort > /tmp/mrw_frames_list.txt || true
+grep -v '^{latest_name}$' /tmp/mrw_frames_list.txt > /tmp/mrw_frames_only.txt || true
+count=$(wc -l < /tmp/mrw_frames_only.txt | tr -d ' ')
+if [ "$count" -gt {args.keep} ]; then
+  head -n $((count-{args.keep})) /tmp/mrw_frames_only.txt | xargs -r rm -f
+fi
+python3 - <<'EOF'
+import json
+from pathlib import Path
+base = Path("{remote_dir}")
+latest_name = "{latest_name}"
+frames = sorted([p.name for p in base.glob("*.png") if p.name != latest_name])
+manifest = {{
+  "site": "{site}",
+  "generated_utc": "{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+  "latest_scan_utc": "{meta['last_modified_utc']}",
+  "latest_frame": frames[-1] if frames else "",
+  "latest_static": latest_name if (base / latest_name).exists() else "",
+  "frame_count": len(frames),
+  "frames": frames
+}}
+(base / "manifest.json").write_text(json.dumps(manifest, indent=2))
+EOF
+rm -f /tmp/mrw_frames_list.txt /tmp/mrw_frames_only.txt
+"""
+    run(["ssh", ssh_target, remote_script], env=env)
+
+    print(f"updated loop: {site} latest_scan={frame_ts}.png unique_added={added_new_frame}")
+
+if __name__ == "__main__":
+    main()

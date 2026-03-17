@@ -1,0 +1,28 @@
+{
+  "description": "IR (C13) brightness temperature → RGBA. Cold (200 K) = white, warm (300 K) = black. Same format as radar transfer_function.",
+  "unit": "K",
+  "transfer_function": [
+    { "K": 180, "rgba": [0, 0, 0, 0], "note": "no data / transparent" },
+    { "K": 200, "rgba": [255, 255, 255, 255], "note": "cold cloud tops" },
+    { "K": 205, "rgba": [242, 242, 242, 255] },
+    { "K": 210, "rgba": [229, 229, 229, 255] },
+    { "K": 215, "rgba": [217, 217, 217, 255] },
+    { "K": 220, "rgba": [204, 204, 204, 255] },
+    { "K": 225, "rgba": [191, 191, 191, 255] },
+    { "K": 230, "rgba": [179, 179, 179, 255] },
+    { "K": 235, "rgba": [166, 166, 166, 255] },
+    { "K": 240, "rgba": [153, 153, 153, 255] },
+    { "K": 245, "rgba": [140, 140, 140, 255] },
+    { "K": 250, "rgba": [128, 128, 128, 255] },
+    { "K": 255, "rgba": [115, 115, 115, 255] },
+    { "K": 260, "rgba": [102, 102, 102, 255], "note": "low clouds — was transparent, now visible" },
+    { "K": 265, "rgba": [89, 89, 89, 255] },
+    { "K": 270, "rgba": [0, 0, 0, 0], "note": "transparent — land/ocean starts ~270 K" },
+    { "K": 275, "rgba": [0, 0, 0, 0] },
+    { "K": 280, "rgba": [0, 0, 0, 0] },
+    { "K": 285, "rgba": [0, 0, 0, 0] },
+    { "K": 290, "rgba": [0, 0, 0, 0] },
+    { "K": 295, "rgba": [0, 0, 0, 0] },
+    { "K": 300, "rgba": [0, 0, 0, 0] }
+  ]
+}

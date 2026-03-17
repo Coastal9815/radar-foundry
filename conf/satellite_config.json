@@ -1,0 +1,21 @@
+{
+  "satellite": "G19",
+  "bucket": "noaa-goes19",
+  "product": "ABI-L1b-RadC",
+  "region_id": "satellite",
+  "bounds": {
+    "min_lon": -110,
+    "max_lon": -15,
+    "min_lat": 18,
+    "max_lat": 50
+  },
+  "center": [-81.076, 31.919],
+  "zoom": 5,
+  "frames": 72,
+  "cadence_min": 5,
+  "width_px": 4096,
+  "products": [
+    { "id": "ir", "label": "IR", "channel": 13 },
+    { "id": "vis", "label": "Visible", "channel": 2 }
+  ]
+}

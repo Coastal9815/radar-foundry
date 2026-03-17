@@ -1,0 +1,17 @@
+{
+  "folders": [
+    {
+      "path": "vscode-remote://ssh-remote+weather-core/Users/scott/wx/radar-foundry",
+      "name": "radar-foundry"
+    },
+    {
+      "path": "vscode-remote://ssh-remote+wx-i9/home/scott/wx/radar-foundry",
+      "name": "wx-i9"
+    },
+    {
+      "path": "vscode-remote://ssh-remote+pi-wx/home/scott",
+      "name": "pi-wx"
+    }
+  ],
+  "settings": {}
+}

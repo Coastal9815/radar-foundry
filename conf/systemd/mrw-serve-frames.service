@@ -1,0 +1,16 @@
+[Unit]
+Description=MRW serve_frames - radar HTTP server
+After=network.target
+
+[Service]
+Type=simple
+User=scott
+WorkingDirectory=/home/scott/wx/radar-foundry
+ExecStart=/home/scott/wx/radar-foundry/.venv-wxi9/bin/python /home/scott/wx/radar-foundry/bin/serve_frames.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

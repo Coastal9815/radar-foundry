@@ -1,0 +1,215 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MRW Lightning Map</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.js"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; background:#000; color:#ddd; font-family:-apple-system,system-ui,sans-serif; overflow:hidden; }
+    #map { position:fixed; inset:0; width:100%; height:100%; }
+    .top {
+      position:fixed; top:0; left:0; right:0; z-index:10;
+      display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px; flex-wrap:wrap;
+      background:rgba(0,0,0,.75); backdrop-filter:blur(4px);
+    }
+    .btns { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { background:#222; color:#ddd; border:1px solid #444; padding:6px 10px; border-radius:8px; cursor:pointer; }
+    button:hover { background:#2a2a2a; }
+    .meta { font-size:12px; opacity:.9; }
+    .top .title { font-size:18px; font-weight:600; margin-right:10px; }
+    .stamp {
+      position:fixed; bottom:12px; right:12px; z-index:10;
+      background:rgba(0,0,0,.7); color:#fff; padding:6px 10px;
+      font-size:14px; font-variant-numeric:tabular-nums;
+      border-radius:6px; pointer-events:none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="top">
+    <div class="btns" style="flex-shrink:0">
+      <span class="title">Lightning</span>
+      <button id="refresh" title="Refresh">↻</button>
+      <button id="fullscreen" title="Fullscreen">⛶</button>
+    </div>
+    <div class="meta" style="flex-shrink:0">
+      Strikes: <span id="count">0</span>
+      · <span id="ts">—</span>
+    </div>
+  </div>
+  <div id="stamp" class="stamp">—</div>
+
+<script>
+(async function () {
+  const MAPBOX = {
+    accessToken: "YOUR_MAPBOX_PUBLIC_TOKEN",
+    style: "mapbox://styles/scott3294/cmlg0hi32000i01qw7tik8xdm"
+  };
+  const CENTER = [-81.075938, 31.919173];
+  const MAX_RADIUS_MI = 500;
+  const WX_SERVE = "http://192.168.2.2:8080";
+
+  // Bounds for 500 mi radius: ~69 mi/deg lat, ~69*cos(lat) mi/deg lon at MRW
+  function boundsForRadiusMiles(lon, lat, radiusMi) {
+    const degPerMiLat = 1 / 69;
+    const degPerMiLon = 1 / (69 * Math.cos(lat * Math.PI / 180));
+    return [[lon - radiusMi * degPerMiLon, lat - radiusMi * degPerMiLat], [lon + radiusMi * degPerMiLon, lat + radiusMi * degPerMiLat]];
+  }
+  const BOUNDS_500 = boundsForRadiusMiles(CENTER[0], CENTER[1], MAX_RADIUS_MI);
+
+  function domainCircle(lon, lat, radiusMi) {
+    const R = 3959;
+    const points = 64;
+    const coords = [];
+    for (let i = 0; i <= points; i++) {
+      const brg = (i / points) * 2 * Math.PI;
+      const d = radiusMi / R;
+      const lat1 = Math.asin(Math.sin(lat * Math.PI / 180) * Math.cos(d) + Math.cos(lat * Math.PI / 180) * Math.sin(d) * Math.cos(brg));
+      const lon1 = lon * Math.PI / 180 + Math.atan2(Math.sin(brg) * Math.sin(d) * Math.cos(lat * Math.PI / 180), Math.cos(d) - Math.sin(lat * Math.PI / 180) * Math.sin(lat1));
+      coords.push([lon1 * 180 / Math.PI, lat1 * 180 / Math.PI]);
+    }
+    return { type: "Feature", geometry: { type: "Polygon", coordinates: [coords] }, properties: {} };
+  }
+  const BASE_URL = (window.location.origin && window.location.origin !== "null" && !window.location.origin.startsWith("file"))
+    ? window.location.origin : WX_SERVE;
+  const POINTS_URL = BASE_URL + "/lightning_points.geojson";
+  const RINGS_URL = BASE_URL + "/lightning_range_rings.geojson";
+  const POLL_MS = 4000;
+
+  const countEl = document.getElementById("count");
+  const tsEl = document.getElementById("ts");
+  const stampEl = document.getElementById("stamp");
+
+
+  async function refreshLayers() {
+    if (!map || !map.getSource) return;
+    const src = map.getSource("lightning-points");
+    if (!src) return;
+    src.setData(POINTS_URL + "?t=" + Date.now());
+    try {
+      const r = await fetch(POINTS_URL + "?t=" + Date.now(), { cache: "no-store" });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && Array.isArray(d.features)) {
+          if (countEl) countEl.textContent = String(d.features.length);
+          const ts = d.features.length ? d.features[d.features.length - 1]?.properties?.timestamp_utc : null;
+          if (tsEl) tsEl.textContent = ts ? new Date(ts).toLocaleTimeString() : "—";
+          if (stampEl) stampEl.textContent = ts ? new Date(ts).toLocaleString() : "—";
+        }
+      }
+    } catch (_) {}
+  }
+
+  mapboxgl.accessToken = MAPBOX.accessToken;
+  const map = new mapboxgl.Map({
+    container: "map",
+    style: MAPBOX.style,
+    bounds: BOUNDS_500,
+    fitBoundsOptions: { padding: 20, duration: 0 },
+    minZoom: 4,
+    maxZoom: 14
+  });
+
+  map.on("load", async () => {
+    map.resize();
+    const zoom500 = map.getZoom();
+    map.setMinZoom(zoom500);
+    map.addSource("domain", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [domainCircle(CENTER[0], CENTER[1], MAX_RADIUS_MI)] }
+    });
+    map.addLayer({
+      id: "domain-boundary",
+      type: "line",
+      source: "domain",
+      paint: { "line-color": "#64748b", "line-width": 1, "line-dasharray": [2, 2], "line-opacity": 0.6 }
+    });
+    const ringsData = await fetch(RINGS_URL + "?t=" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (ringsData) {
+      map.addSource("lightning-range-rings", { type: "geojson", data: ringsData });
+      map.addLayer({
+        id: "lightning-range-rings-line",
+        type: "line",
+        source: "lightning-range-rings",
+        paint: { "line-color": "#ffffff", "line-width": 1, "line-opacity": 0.4 }
+      });
+    }
+    map.addSource("station", {
+      type: "geojson",
+      data: { type: "Feature", geometry: { type: "Point", coordinates: CENTER }, properties: {} }
+    });
+    map.addLayer({
+      id: "station-dot",
+      type: "circle",
+      source: "station",
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 6, 14, 12],
+        "circle-color": "#ffffff",
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#0ea5e9"
+      }
+    });
+    map.addSource("lightning-points", { type: "geojson", data: POINTS_URL });
+    map.addLayer({
+      id: "lightning-all",
+      type: "circle",
+      source: "lightning-points",
+      paint: {
+        "circle-radius": ["case", ["==", ["get", "render_type"], "bolt"], 0, ["match", ["get", "strike_type"], "CG", 5, 4]],
+        "circle-color": ["match", ["get", "strike_type"], "IC", "#38bdf8", "#facc15"],
+        "circle-opacity": 0.9,
+        "circle-stroke-width": 1,
+        "circle-stroke-color": "#fff"
+      }
+    });
+    const BOLT_URL = new URL("lightning-bolt.svg", window.location.href).href;
+    const boltImg = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = BOLT_URL;
+    });
+    map.addImage("lightning-bolt", boltImg, { pixelRatio: 2 });
+    map.addLayer({
+      id: "lightning-bolt",
+      type: "symbol",
+      source: "lightning-points",
+      filter: ["==", ["get", "render_type"], "bolt"],
+      layout: {
+        "icon-image": "lightning-bolt",
+        "icon-size": 0.25,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      },
+      paint: {
+        "icon-color": "#ffffff",
+        "icon-opacity": 1,
+        "icon-halo-color": "#000000",
+        "icon-halo-width": 1
+      }
+    });
+    await refreshLayers();
+  });
+
+  function refresh() {
+    refreshLayers();
+  }
+
+  document.getElementById("refresh").onclick = () => refresh();
+  document.getElementById("fullscreen").onclick = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  };
+
+  window.addEventListener("resize", () => map.resize());
+  document.addEventListener("fullscreenchange", () => map.resize());
+
+  setInterval(refresh, POLL_MS);
+  setTimeout(refresh, 2000);
+})();
+</script>
+</body>
+</html>

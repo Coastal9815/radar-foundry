@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mrw.nws_alerts</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/scott/wx/radar-foundry/bin/run_nws_alerts.sh</string>
+    <string>--remote</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>180</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/nws_alerts_launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/nws_alerts_launchd.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/scott/wx/radar-foundry</string>
+</dict>
+</plist>

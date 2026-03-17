@@ -1,0 +1,68 @@
+{
+  "regions": [
+    {
+      "id": "eastern_us",
+      "label": "Eastern US",
+      "center": [-83.329298, 31.966225],
+      "zoom": 5.49,
+      "bearing": 0,
+      "pitch": 0,
+      "bounds": {"min_lon": -110, "max_lon": -62, "min_lat": 22, "max_lat": 48},
+      "width_px": 4096
+    },
+    {
+      "id": "florida_south",
+      "label": "Florida South",
+      "center": [-82.175433, 28.922021],
+      "zoom": 6.09,
+      "bearing": 0,
+      "pitch": 0,
+      "bounds": {"min_lon": -100, "max_lon": -64, "min_lat": 18, "max_lat": 40},
+      "width_px": 4096
+    },
+    {
+      "id": "southeast",
+      "label": "Southeast",
+      "center": [-82.741892, 32.028122],
+      "zoom": 6.09,
+      "bearing": 0,
+      "pitch": 0,
+      "bounds": {"min_lon": -100, "max_lon": -64, "min_lat": 18, "max_lat": 40},
+      "width_px": 4096
+    },
+    {
+      "id": "florida",
+      "label": "Florida",
+      "center": [-81.632441, 27.624126],
+      "zoom": 6.66,
+      "bearing": 0,
+      "pitch": 0,
+      "bounds": {"min_lon": -100, "max_lon": -64, "min_lat": 18, "max_lat": 40},
+      "width_px": 4096
+    },
+    {
+      "id": "georgia",
+      "label": "Georgia",
+      "center": [-82.124984, 32.279731],
+      "zoom": 6.93,
+      "bearing": 0,
+      "pitch": 0,
+      "bounds": {"min_lon": -100, "max_lon": -64, "min_lat": 18, "max_lat": 40},
+      "width_px": 4096
+    },
+    {
+      "id": "savannah_250",
+      "label": "Savannah 250",
+      "center": [-81.177204, 31.831369],
+      "zoom": 7.42,
+      "bearing": 0,
+      "pitch": 0,
+      "bounds": {"min_lon": -100, "max_lon": -64, "min_lat": 18, "max_lat": 40},
+      "width_px": 4096
+    }
+  ],
+  "default_region": "eastern_us",
+  "frame_limit": 36,
+  "product": "MergedReflectivityQCComposite_00.50",
+  "s3_region": "CONUS"
+}

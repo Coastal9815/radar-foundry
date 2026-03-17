@@ -1,0 +1,338 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MRW GOES Satellite</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.js"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; background:#000; color:#ddd; font-family:-apple-system,system-ui,sans-serif; overflow:hidden; }
+    #map { position:fixed; inset:0; width:100%; height:100%; }
+    .top {
+      position:fixed; top:0; left:0; right:0; z-index:10;
+      display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px; flex-wrap:wrap;
+      background:rgba(0,0,0,.75); backdrop-filter:blur(4px);
+    }
+    .btns { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button, select { background:#222; color:#ddd; border:1px solid #444; padding:6px 10px; border-radius:8px; cursor:pointer; }
+    button:hover { background:#2a2a2a; }
+    input[type="range"] { width:180px; }
+    .meta { font-size:12px; opacity:.9; }
+    .top .title { flex:1; text-align:right; font-size:18px; font-weight:600; pointer-events:none; padding-right:12px; }
+    .products { display:flex; gap:6px; align-items:center; }
+    .products button { font-weight:600; }
+    .products button.active { background:#333; border-color:#7dd3fc; }
+    .frameStamp {
+      position:fixed; bottom:12px; right:12px; z-index:10;
+      background:rgba(0,0,0,.7); color:#fff; padding:6px 10px;
+      font-size:14px; font-weight:600; font-variant-numeric:tabular-nums;
+      border-radius:6px; pointer-events:none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="top">
+    <div class="btns" style="flex-shrink:0">
+      <div class="products" id="products"></div>
+      <button id="play">Play</button>
+      <button id="stepBack">◀</button>
+      <button id="stepFwd">▶</button>
+      <input id="speed" type="range" min="50" max="500" value="160" />
+      <span class="meta">Speed: <span id="speedVal">160</span> ms</span>
+      <input id="opacity" type="range" min="20" max="100" value="70" title="Overlay opacity" />
+      <span class="meta">Opacity: <span id="opacityVal">70</span>%</span>
+      <select id="frameLimit" title="Frames in loop">
+        <option value="24">24</option>
+        <option value="36">36</option>
+        <option value="48">48</option>
+        <option value="72" selected>72</option>
+      </select>
+      <button id="refresh" title="Refresh">↻</button>
+      <button id="fullscreen" title="Fullscreen">⛶</button>
+    </div>
+    <div class="title">GOES Satellite</div>
+    <div class="meta" style="flex-shrink:0">
+      Frame: <span id="idx">0</span>/<span id="count">0</span>
+      · <span id="ts">—</span>
+    </div>
+  </div>
+  <div id="frameStamp" class="frameStamp">—</div>
+
+<script>
+(async function () {
+  const MAPBOX = {
+    accessToken: "YOUR_MAPBOX_PUBLIC_TOKEN",
+    style: "mapbox://styles/scott3294/cmlg0hi32000i01qw7tik8xdm"
+  };
+  const PRODUCTS = [
+    { id: "ir", label: "IR" },
+    { id: "vis", label: "Visible" }
+  ];
+  const BOUNDS_DEFAULT = { min_lon: -110, max_lon: -15, min_lat: 18, max_lat: 50 };
+  const CENTER_DEFAULT = [-85, 34];
+  const ZOOM_DEFAULT = 4.2;
+
+  const WX_SERVE = "http://192.168.2.2:8080";
+  const BASE_URL = (window.location.origin && window.location.origin !== "null" && !window.location.origin.startsWith("file"))
+    ? window.location.origin : WX_SERVE;
+  const SITE = "satellite";
+
+  const params = new URLSearchParams(location.search);
+  let BOUNDS = BOUNDS_DEFAULT;
+  let CENTER = CENTER_DEFAULT;
+  let ZOOM = ZOOM_DEFAULT;
+  const centerParam = params.get("center");
+  const zoomParam = params.get("zoom");
+
+  try {
+    const r = await fetch(`${BASE_URL}/${SITE}/config.json?t=${Date.now()}`, { cache: "no-store" });
+    if (r.ok) {
+      const cfg = await r.json();
+      if (cfg.bounds) BOUNDS = cfg.bounds;
+      if (cfg.center && !centerParam) CENTER = cfg.center;
+      if (cfg.zoom != null && !zoomParam) ZOOM = cfg.zoom;
+    }
+  } catch (_) {}
+  if (centerParam) {
+    const [lon, lat] = centerParam.split(",").map(Number);
+    if (!isNaN(lon) && !isNaN(lat)) CENTER = [lon, lat];
+  }
+  if (zoomParam) {
+    const z = parseFloat(zoomParam);
+    if (!isNaN(z)) ZOOM = z;
+  }
+
+  function overlayCoords(b) {
+    return [
+      [b.min_lon, b.min_lat],
+      [b.max_lon, b.min_lat],
+      [b.max_lon, b.max_lat],
+      [b.min_lon, b.max_lat]
+    ];
+  }
+  const OVERLAY_COORDS = overlayCoords(BOUNDS);
+  const MAPBOX_COORDS = [OVERLAY_COORDS[3], OVERLAY_COORDS[2], OVERLAY_COORDS[1], OVERLAY_COORDS[0]];
+
+  function urlsForProduct(pid) {
+    const base = BASE_URL;
+    return {
+      manifestUrl: `${base}/${SITE}/${pid}/manifest.json`,
+      frameBase: `${base}/${SITE}/${pid}/`
+    };
+  }
+
+  const FRAME_LIMIT_KEY = "mrw_frame_limit_satellite";
+  const OPACITY_KEY = "mrw_satellite_opacity";
+  const FRAME_LIMIT_OPTS = [24, 36, 48, 72];
+  let allFrames = [], frames = [], i = 0, timer = null;
+  let overlayOpacity = parseInt(params.get("opacity") || localStorage.getItem(OPACITY_KEY) || "70", 10);
+  overlayOpacity = Math.max(20, Math.min(100, overlayOpacity));
+  let frameLimit = parseInt(params.get("frameLimit") || localStorage.getItem(FRAME_LIMIT_KEY) || "72", 10);
+  if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 72;
+  const productParam = params.get("product") || "ir";
+  const autoplay = params.has("autoplay") || params.has("play");
+  const POLL_MS = 15000;
+
+  let manifestUrl = urlsForProduct(productParam).manifestUrl;
+  let frameBase = urlsForProduct(productParam).frameBase;
+  let currentProduct = PRODUCTS.find(p => p.id === productParam) || PRODUCTS[0];
+
+  const frameLimitEl = document.getElementById("frameLimit");
+  const countEl = document.getElementById("count");
+  const idxEl = document.getElementById("idx");
+  const tsEl = document.getElementById("ts");
+  const frameStampEl = document.getElementById("frameStamp");
+  frameLimitEl.value = String(frameLimit);
+  frameLimitEl.onchange = () => {
+    frameLimit = parseInt(frameLimitEl.value, 10);
+    localStorage.setItem(FRAME_LIMIT_KEY, String(frameLimit));
+    frames = allFrames.slice(-frameLimit);
+    countEl.textContent = frames.length;
+    if (frames.length && i >= frames.length) i = frames.length - 1;
+    if (frames.length) setFrame(i);
+    if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); }
+  };
+
+  function setFrame(n) {
+    if (!frames.length) return;
+    i = Math.max(0, Math.min(n, frames.length - 1));
+    const name = frames[i];
+    const url = frameBase + name + "?v=" + Date.now();
+    idxEl.textContent = i + 1;
+    countEl.textContent = frames.length;
+    const ts = name.replace(".png", "");
+    const timeStr = new Date(Date.UTC(parseInt(ts.slice(0,4)), parseInt(ts.slice(4,6))-1, parseInt(ts.slice(6,8)), parseInt(ts.slice(9,11)), parseInt(ts.slice(11,13)))).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",hour12:true});
+    tsEl.textContent = timeStr;
+    frameStampEl.textContent = timeStr;
+    const src = map.getSource("satellite");
+    if (src) src.updateImage({ url: url });
+  }
+
+  const LOOP_HOLD_MS = 1000;
+  function advance() {
+    if (i >= frames.length - 1) {
+      clearInterval(timer);
+      timer = null;
+      setTimeout(() => {
+        setFrame(0);
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }, LOOP_HOLD_MS);
+    } else {
+      setFrame(i + 1);
+    }
+  }
+
+  async function loadManifestForProduct(pid) {
+    let resp = await fetch(urlsForProduct(pid).manifestUrl, { cache: "no-store" });
+    let base = BASE_URL;
+    if (!resp.ok) {
+      resp = await fetch(`${WX_SERVE}/${SITE}/${pid}/manifest.json`, { cache: "no-store" });
+      base = WX_SERVE;
+    }
+    if (!resp.ok) return false;
+    const mf = await resp.json();
+    if (!mf.frames || mf.frames.length === 0) return false;
+    manifestUrl = `${base}/${SITE}/${pid}/manifest.json`;
+    frameBase = `${base}/${SITE}/${pid}/`;
+    allFrames = mf.frames || [];
+    frames = allFrames.slice(-frameLimit);
+    countEl.textContent = frames.length;
+    i = frames.length ? frames.length - 1 : 0;
+    return true;
+  }
+
+  function coordsForProduct(p) {
+    const b = p.bounds || BOUNDS;
+    const oc = overlayCoords(b);
+    return [oc[3], oc[2], oc[1], oc[0]];
+  }
+
+  async function switchProduct(p) {
+    currentProduct = p;
+    const ok = await loadManifestForProduct(p.id);
+    if (!ok) return;
+    if (map.getLayer("satellite-layer")) map.removeLayer("satellite-layer");
+    if (map.getSource("satellite")) map.removeSource("satellite");
+    if (frames.length) {
+      const coords = coordsForProduct(p);
+      map.addSource("satellite", {
+        type: "image",
+        url: frameBase + frames[i] + "?v=" + Date.now(),
+        coordinates: coords
+      });
+      map.addLayer({
+        id: "satellite-layer",
+        type: "raster",
+        source: "satellite",
+        paint: { "raster-fade-duration": 0, "raster-opacity": overlayOpacity / 100 }
+      });
+      setFrame(i);
+    }
+  }
+
+  await loadManifestForProduct(currentProduct.id);
+
+  mapboxgl.accessToken = MAPBOX.accessToken;
+  const map = new mapboxgl.Map({
+    container: "map",
+    style: MAPBOX.style,
+    center: CENTER,
+    zoom: ZOOM,
+    minZoom: 3,
+    maxZoom: 14
+  });
+
+  map.on("load", () => {
+    map.resize();
+    PRODUCTS.forEach((p) => {
+      const btn = document.createElement("button");
+      btn.textContent = p.label;
+      btn.className = p.id === currentProduct.id ? "active" : "";
+      btn.onclick = () => {
+        document.querySelectorAll(".products button").forEach(el => el.classList.remove("active"));
+        btn.classList.add("active");
+        switchProduct(p);
+      };
+      document.getElementById("products").appendChild(btn);
+    });
+    if (frames.length) {
+      const coords = coordsForProduct(currentProduct);
+      map.addSource("satellite", {
+        type: "image",
+        url: frameBase + frames[i] + "?v=" + Date.now(),
+        coordinates: coords
+      });
+      map.addLayer({
+        id: "satellite-layer",
+        type: "raster",
+        source: "satellite",
+        paint: { "raster-fade-duration": 0, "raster-opacity": overlayOpacity / 100 }
+      });
+      setFrame(i);
+      if (autoplay && !timer) {
+        document.getElementById("play").textContent = "Pause";
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }
+    }
+  });
+
+  async function refreshManifest() {
+    try {
+      const resp = await fetch(manifestUrl + "?t=" + Date.now(), { cache: "no-store" });
+      if (!resp.ok) return;
+      const mf = await resp.json();
+      const newAll = mf.frames || [];
+      if (newAll.length === 0) return;
+      const ourLast = frames.length ? frames[frames.length - 1] : null;
+      const hasNew = ourLast !== newAll[newAll.length - 1];
+      const cur = frames[i];
+      allFrames = newAll;
+      frames = allFrames.slice(-frameLimit);
+      countEl.textContent = frames.length;
+      if (timer) {
+        i = Math.min(i, frames.length - 1);
+        setFrame(i);
+      } else {
+        if (hasNew) { i = frames.length - 1; setFrame(i); }
+        else { const idx = frames.indexOf(cur); i = idx >= 0 ? idx : frames.length - 1; if (idx < 0) setFrame(i); }
+      }
+    } catch (_) {}
+  }
+
+  document.getElementById("play").onclick = () => {
+    if (timer) { clearInterval(timer); timer = null; document.getElementById("play").textContent = "Play"; }
+    else if (frames.length) { document.getElementById("play").textContent = "Pause"; timer = setInterval(advance, Number(document.getElementById("speed").value)); }
+  };
+  document.getElementById("stepBack").onclick = () => { clearInterval(timer); timer = null; document.getElementById("play").textContent = "Play"; if (frames.length) setFrame((i - 1 + frames.length) % frames.length); };
+  document.getElementById("stepFwd").onclick = () => { clearInterval(timer); timer = null; document.getElementById("play").textContent = "Play"; if (frames.length) setFrame((i + 1) % frames.length); };
+  document.getElementById("speed").oninput = () => { document.getElementById("speedVal").textContent = document.getElementById("speed").value; if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); } };
+  document.getElementById("refresh").onclick = () => refreshManifest();
+  document.getElementById("fullscreen").onclick = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  };
+
+  window.addEventListener("resize", () => map.resize());
+  document.addEventListener("fullscreenchange", () => map.resize());
+
+  document.getElementById("speedVal").textContent = document.getElementById("speed").value;
+  const opacityEl = document.getElementById("opacity");
+  const opacityValEl = document.getElementById("opacityVal");
+  opacityEl.value = String(overlayOpacity);
+  opacityValEl.textContent = overlayOpacity;
+  opacityEl.oninput = () => {
+    overlayOpacity = parseInt(opacityEl.value, 10);
+    localStorage.setItem(OPACITY_KEY, String(overlayOpacity));
+    opacityValEl.textContent = overlayOpacity;
+    if (map.getLayer("satellite-layer")) {
+      map.setPaintProperty("satellite-layer", "raster-opacity", overlayOpacity / 100);
+    }
+  };
+  setInterval(refreshManifest, POLL_MS);
+  setTimeout(refreshManifest, 2000);
+})();
+</script>
+</body>
+</html>

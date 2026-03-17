@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>Master MRW Dashboard</title>
+  <style>
+    /* LAYOUT LOCKED — see docs/MASTER_MRW_LAYOUT_LOCKED.md — do not change without approval */
+    :root {
+      --screen-w: 3839px;
+      --screen-h: 2160px;
+      --edge-pad: 20px;
+      --left-edge: 20px;
+      --right-edge: 3819px;
+      --top-edge: 104px;
+      --bottom-edge: 2140px;
+      --content-w: 3799px;
+      --content-h: 2036px;
+      --threat-h: 104px;
+      --gap: 20px;
+      --pad: 20px;
+      --bg: #1a1d24;
+      --card: #4A5E8D;
+      --border: rgba(255,255,255,0.15);
+      --text: #f0f2f5;
+      --muted: rgba(255,255,255,0.7);
+      --accent: #d93a2f;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; width: var(--screen-w); height: var(--screen-h); overflow: hidden; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 26px;
+    }
+
+    .wrap {
+      width: var(--screen-w);
+      height: var(--screen-h);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Threat bar */
+    .threatBar {
+      flex: 0 0 var(--top-edge);
+      width: var(--screen-w);
+      display: flex;
+      align-items: center;
+      padding: 0 var(--pad);
+      background: #e8e8e8;
+      border-bottom: 1px solid var(--border);
+      font-size: 40px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      color: #000;
+    }
+    .threatBar .content { width: var(--content-w); }
+    .threatBar .placeholder { color: #333; }
+
+    /* Version badge */
+    .verBadge {
+      position: fixed; bottom: 6px; right: 6px;
+      font-size: 22px; color: var(--muted); opacity: 0.7;
+      font-weight: 400; letter-spacing: 0.5px;
+    }
+
+    /* Main grid — LOCKED: left=20, right=3819, top=104, bottom=2140 */
+    .grid {
+      flex: 0 0 var(--content-h);
+      display: grid;
+      grid-template-columns: 1420px 1089px 1250px;
+      grid-template-rows: 998px 998px;
+      gap: var(--edge-pad);
+      padding: var(--edge-pad);
+      min-height: 0;
+    }
+
+    .tile {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      min-height: 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .tile .ph {
+      padding: var(--pad);
+      color: var(--muted);
+      font-weight: 800;
+      letter-spacing: 2.4px;
+      text-transform: uppercase;
+      font-size: 30px;
+    }
+
+    /* Center stack: Wind + Tide — middle section fills 1089px between left and right */
+    .centerStack {
+      grid-column: 2;
+      grid-row: 1 / -1;
+      display: grid;
+      grid-template-rows: 744px 744px 488px;
+      gap: 20px;
+      min-height: 0;
+      align-content: start;
+      justify-items: end;
+    }
+    .centerStack .windTile,
+    .centerStack .tideTile {
+      width: 1089px;
+      height: 744px;
+      justify-self: end;
+      align-self: start;
+    }
+    .centerStack .middleBottomTile {
+      width: 1089px;
+      height: 488px;
+      justify-self: end;
+      align-self: start;
+    }
+
+    /* Wind tile — compass scaffold */
+    .windTile { position: relative; overflow: hidden; padding: 0; margin: 0; }
+    .windAbs { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0; margin: 0; box-sizing: border-box; }
+    .windAbs .compass { width: 1089px; height: 744px; display: block; }
+    .windAbs .ring { stroke: rgba(255,255,255,0.45); stroke-width: 12; fill: none; }
+    .windAbs .tick { stroke: rgba(255,255,255,0.14); stroke-width: 2; transform: translateY(6px); }
+    .windAbs .tickMajor { stroke: rgba(255,255,255,0.22); stroke-width: 3; transform: translateY(6px); }
+    .windAbs .compass .lbl { fill: rgba(255,255,255,0.85); font-size: 24px; font-weight: 900; letter-spacing: 2px; }
+    .windAbs text.lbl[x="180"][y="6"] { transform: translateY(10px); }
+    .windAbs text.lbl[x="180"][y="366"] { transform: translateY(-12px); }
+    .windAbs text.lbl[x="364"][y="186"] { transform: translateX(-11px); }
+    .windAbs text.lbl[x="-10"][y="186"] { transform: translateX(12px); }
+    .windAbs .needle { fill: var(--accent); }
+    .windAbs .dir { fill: rgba(255,255,255,0.9); font-size: 35px; font-weight: 800; }
+    .windAbs #w_dir_txt { transform: translateY(2px); }
+    .windAbs .speed { fill: rgba(255,255,255,0.95); font-size: 100px; font-weight: 700; }
+    .windAbs .unit { fill: rgba(255,255,255,0.7); font-size: 20px; font-weight: 800; }
+    .windAbs .wCorner { position: absolute; color: rgba(255,255,255,0.94); line-height: 1; z-index: 5; margin: 0; padding: 0; }
+    .windAbs .wCorner .clabel { font-size: 39px; font-weight: 900; opacity: 0.9; }
+    .windAbs .wCorner .cvalue { font-size: 108px; font-weight: 900; }
+    .windAbs .wCorner .cdir { font-size: 28px; font-weight: 700; opacity: 0.85; margin-top: 4px; }
+    .windAbs .wCorner .cdir.cts { font-size: 32px; margin-top: 6px; position: absolute; top: 100%; right: 0; text-align: right; }
+    .windAbs .wCorner.cTL { top: 26px; left: 26px; }
+    .windAbs .wCorner.cTR { top: 26px; right: 26px; text-align: right; }
+    .windAbs .wCorner.cBL { bottom: 52px; left: 26px; }
+    .windAbs .wCorner.cBR { bottom: 50px; right: 26px; text-align: right; }
+
+    /* Tide tile */
+    .tideTile { position: relative; overflow: hidden; }
+    .tideAbs { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+    .tideAbs .tideClock { width: 1089px; height: 744px; display: block; }
+    .tideAbs .tideClock .ring { stroke: rgba(255,255,255,0.45); stroke-width: 12; fill: none; }
+    .tideAbs .tideClock .lbl { fill: rgba(255,255,255,0.82); font-size: 16px; font-weight: 900; }
+    .tideAbs .tideClock .tideNeedle { fill: var(--accent); }
+    .tideAbs .tideClock .tideMarker { fill: var(--accent); }
+    .tideAbs .tideClock .tideNum { fill: rgba(255,255,255,0.9); font-size: 34px; font-weight: 900; letter-spacing: 0.02em; }
+    .tideAbs .tideClock #tide_l1 { transform: translate(-16px, 3px); }
+    .tideAbs .tideClock #tide_l2 { transform: translate(-2px, 5px); }
+    .tideAbs .tideClock #tide_l4 { transform: translate(-2px, -10px); }
+    .tideAbs .tideClock #tide_r2 { transform: translate(2px, -10px); }
+    .tideAbs .tideClock #tide_r4 { transform: translate(2px, 5px); }
+    .tideAbs .tideClock #tide_r5 { transform: translate(16px, 5px); }
+    .tideAbs .tideClock .tideMain { fill: rgba(255,255,255,0.95); font-size: 85px; font-weight: 600; }
+    .tideAbs .tideClock .tideState { fill: rgba(255,255,255,0.85); font-size: 30px; font-weight: 700; }
+    .tideAbs .tideClock .tideSub { fill: rgba(255,255,255,0.75); font-size: 20px; font-weight: 800; }
+    .tideAbs .tideCallout { position: absolute; line-height: 1; color: rgba(255,255,255,0.92); }
+    .tideAbs .tideCallout .tlbl { font-size: 40px; font-weight: 700; color: rgba(255,255,255,0.72); }
+    .tideAbs .tideCallout .tval { font-size: 60px; font-weight: 700; }
+    .tideAbs .tideCallout .tsub { font-size: 45px; font-weight: 700; color: rgba(255,255,255,0.85); margin-top: 10px; }
+    .tideAbs .tideTL { top: 16px; left: 13px; }
+    .tideAbs .tideTR { top: 16px; right: 13px; text-align: right; }
+    .tideAbs .tideBL { bottom: 16px; left: 13px; }
+    .tideAbs .tideBR { bottom: 16px; right: 13px; text-align: right; }
+
+    /* Extremes tile */
+    .extTile .exGrid {
+      display: grid;
+      grid-template-columns: 175px 175px 176px;
+      gap: 22px;
+      padding: var(--pad);
+    }
+    .extTile .exCol { text-align: center; }
+    .extTile .exPeriod { font-size: 35px; font-weight: 900; color: var(--muted); margin-bottom: 9px; }
+    .extTile .exRow { display: flex; justify-content: space-between; gap: 22px; margin: 6px 0; font-size: 48px; }
+    .extTile .exLbl { color: var(--muted); }
+    .extTile .exVal { font-weight: 900; }
+
+    /* Radar tile — 1250×998 px; embeds KCLX Mapbox player; ?viewport= controls radar zoom */
+    .radarTile {
+      position: relative;
+      width: 1250px;
+      height: 998px;
+      overflow: hidden;
+    }
+    .radarTile .ph { text-align: center; font-size: 56px; }
+    .radarTile iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* Conditions tile */
+    .condTile .condGrid { padding: var(--pad); display: grid; gap: 22px; }
+    .condTile .condRow { display: flex; justify-content: space-between; font-size: 52px; }
+    .condTile .condLbl { color: var(--muted); }
+    .condTile .condVal { font-weight: 900; }
+
+    /* Left grid: 8 boxes in 2×4 — 700×489 px each, 20px gap */
+    .leftGrid {
+      grid-column: 1;
+      grid-row: 1 / -1;
+      display: grid;
+      grid-template-columns: 700px 700px;
+      grid-template-rows: 489px 489px 489px 489px;
+      gap: 20px;
+      min-height: 0;
+    }
+    .leftGrid .tile {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .leftGrid .tile.module-mounted { align-items: stretch; justify-content: stretch; overflow: visible; padding: 0; }
+
+    /* Current Temp module — 700×489; exact pixel positions only (no flex, margin, relative) */
+    /* LOCKED: left content right edge = 480px; right zone starts 500px, ends 684px (right: 16px) */
+    .tempTile { width: 700px; height: 489px; position: relative; padding: 0; }
+    .tempTile .tempRight { position: absolute; left: 500px; right: 16px; top: 0; bottom: 0; }
+    .tempTile .tempHiLo { position: absolute; right: 145px; font-size: 40px; font-weight: 700; color: var(--muted); }
+    .tempTile .tempTime { position: absolute; right: 16px; font-size: 26px; font-weight: 700; line-height: 1; color: var(--muted); }
+    .tempTile .tempHiLo .tempHiLo-lbl { font-size: 30px; }
+    .tempTile .tempHiLo .temp-hi,
+    .tempTile .tempHiLo .temp-lo,
+    .tempTile .tempHiLo .heat-hi,
+    .tempTile .tempHiLo .heat-lo,
+    .tempTile .tempHiLo .thsw-hi,
+    .tempTile .tempHiLo .thsw-lo { font-size: 55px; }
+    .tempTile .tempLabel { font-size: 36px; font-weight: 700; color: var(--muted); }
+    .tempTile .tempMain { font-size: 120px; font-weight: 700; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+    .tempTile .tempMain .temp-val,
+    .tempTile .tempMain .heat-chill-val,
+    .tempTile .tempMain .thsw-val { }
+    .tempTile .tempMain .tempAlert-yellow { color: #f0e68c; }
+    .tempTile .tempMain .tempAlert-orange { color: #ff8c00; }
+    .tempTile .tempMain .tempAlert-red { color: #ff4444; }
+    .tempTile .tempMain .tempAlert-lightblue { color: #87ceeb; }
+    .tempTile .tempMain .tempAlert-blue { color: #4169e1; }
+    .tempTile .tempMain .degF { display: inline-block; font-size: 48px; font-weight: 700; color: var(--muted); vertical-align: top; transform: translateY(3px); }
+    .tempTile .tempMain .deg { line-height: 0.9; vertical-align: top; }
+    .tempTile .tempMain .degF .f { font-size: 0.55em; font-weight: 700; vertical-align: top; }
+
+    /* Humidity module — 700×489; Humidity, Dew Point, Solar, UV + daily extremes */
+    .humTile { width: 700px; height: 489px; position: relative; padding: 0; }
+    .humTile .humLabel { font-size: 36px; font-weight: 700; color: var(--muted); }
+    .humTile .humMain { font-size: 72px; font-weight: 700; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+    .humTile .humMain .hum-val,
+    .humTile .humMain .dew-val { font-size: 110px; }
+    .humTile .humMain .solar-val,
+    .humTile .humMain .uv-val { font-size: 110px; }
+    .humTile .humMain .uv-val.uv-moderate { color: #e6b800; }
+    .humTile .humMain .uv-val.uv-high { color: #e67e00; }
+    .humTile .humMain .uv-val.uv-very-high { color: #c0392b; }
+    .humTile .humMain .uv-val.uv-extreme { color: #7d3c98; }
+    .humTile .humMain .dew-val.dew-moderate { color: #e6b800; }
+    .humTile .humMain .dew-val.dew-high { color: #e67e00; }
+    .humTile .humMain .dew-val.dew-very-high { color: #d35400; }
+    .humTile .humMain .dew-val.dew-extreme { color: #c0392b; }
+    .humTile .humMain .degF { display: inline-block; font-size: 36px; font-weight: 700; color: var(--muted); vertical-align: top; transform: translateY(2px); }
+    .humTile .humMain-right .degF { transform: translateY(12px); }
+    .humTile .humMain .deg { line-height: 0.9; vertical-align: top; }
+    .humTile .humMain .degF .f { font-size: 0.55em; font-weight: 700; vertical-align: top; }
+    .humTile .humUnit { font-size: 32px; font-weight: 700; color: var(--muted); }
+    .humTile .humMain-left .humUnit { display: inline-block; vertical-align: top; transform: translateY(12px); }
+    .humTile .humMain-solar .humUnit { font-size: 24px; }
+    .humTile .humHiLo { position: absolute; right: 145px; font-size: 40px; font-weight: 700; color: var(--muted); }
+    .humTile .humHiLo-solar-hi { left: 14px; right: 133px; width: auto; text-align: right; }
+    .humTile .humTime { position: absolute; right: 16px; font-size: 32px; font-weight: 700; line-height: 1; color: var(--muted); }
+    .humTile .humHiLo .humHiLo-lbl { font-size: 35px; }
+    .humTile .humHiLo .hum-hi, .humTile .humHiLo .hum-lo,
+    .humTile .humHiLo .dew-hi, .humTile .humHiLo .dew-lo,
+    .humTile .humHiLo .solar-hi, .humTile .humHiLo .solar-lo,
+    .humTile .humHiLo .uv-hi, .humTile .humHiLo .uv-lo { font-size: 55px; }
+
+    /* Rain (Current) module — Today, Rain Rate, Storm Rain, Days Since Rain */
+    .rainTile { width: 700px; height: 489px; position: relative; padding: 0; }
+    /* Rain: explicit X/Y — digit cluster right: 116px (aligns with Rain Rate); " at right: 96px; " in/hr" at right: 16px */
+    .rainTile .rainLabel { font-size: 44px; font-weight: 700; color: var(--muted); }
+    .rainTile .rainVal { font-size: 95px; font-weight: 700; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+    .rainTile .rainUnit { font-size: 36px; font-weight: 700; color: var(--muted); }
+    .rainTile .rainUnitInch { font-size: 52px; vertical-align: top; line-height: 1; }
+
+    /* Rain Accumulation module — Month | Year columns, Year Deficit left, Drought Status right */
+    .rainAccumTile { width: 700px; height: 489px; position: relative; padding: 0; }
+    .rainAccumTile .rainAccumLabel { font-size: 44px; font-weight: 700; color: var(--muted); }
+    .rainAccumTile .rainAccumVal { font-size: 100px; font-weight: 700; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+    .rainAccumTile .rainAccumUnit { font-size: 52px; font-weight: 700; color: var(--muted); vertical-align: top; }
+    .rainAccumTile .rainAccumUnitDeficit { position: relative; top: 3px; }
+    .rainAccumTile .rainAccumUnitPct { position: relative; top: 4px; }
+    .rainAccumBottom { position: absolute; bottom: 0; left: 16px; right: 16px; height: 127px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .rainAccumDeficit { display: flex; flex-direction: column; align-items: flex-start; min-width: 140px; }
+    .rainAccumDeficit .deficit-label-wrap { font-size: 32px; margin-bottom: 4px; }
+    .rainAccumDeficit .deficit-val-wrap { font-size: 52px; }
+    .rainAccumDrought { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
+    .rainAccumDrought .drought-label { font-size: 28px; margin-bottom: 6px; position: relative; top: -26px; }
+    .droughtBarWrap { position: relative; width: 100%; max-width: 420px; }
+    .droughtBarArrow { position: absolute; top: -28px; width: 0; height: 0; border-left: 20px solid transparent; border-right: 20px solid transparent; border-top: 28px solid #ef4444; z-index: 2; transition: left 0.2s ease; }
+    .droughtBar { display: flex; height: 22px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.2); }
+    .droughtBar .droughtSeg { flex: 1; min-width: 0; }
+    .droughtBarLabels { display: flex; justify-content: space-between; margin-top: 4px; font-size: 18px; font-weight: 600; color: var(--muted); }
+    .droughtBarLabels .droughtSegLbl { flex: 1; text-align: center; }
+    .droughtStatusText { font-size: 22px; font-weight: 600; color: var(--text); margin-top: 4px; }
+
+    /* Air Quality module — 2×3 layout, position absolute, explicit px */
+    .airQualityTile { width: 700px; height: 489px; position: relative; }
+    .airQualityTile .airQualityCell { position: absolute; }
+    .airQualityTile .airQualityLabel { display: block; margin-bottom: 4px; }
+    .airQualityTile .pollen-label { white-space: nowrap; }
+    .airQualityTile .airQualityLabel { font-size: 52px; font-weight: 700; color: var(--text); }
+    .airQualityTile .airQualityVal { font-size: 72px; font-weight: 700; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+    .airQualityTile .airQualityUnit { display: inline-block; font-size: 36px; font-weight: 700; color: var(--muted); vertical-align: top; line-height: 1; }
+    .airQualityTile .airQualityUnitStack { display: inline-block; vertical-align: top; line-height: 1; }
+    .airQualityTile .airQualityUnitStack span { display: block; font-size: 36px; font-weight: 700; color: var(--muted); }
+    .airQualityTile .aqi-moderate { color: #eab308; }
+    .airQualityTile .aqi-unhealthy-sens { color: #f97316; }
+    .airQualityTile .aqi-unhealthy { color: #ef4444; }
+    .airQualityTile .aqi-very-unhealthy { color: #a855f7; }
+    .airQualityTile .aqi-hazardous { color: #7f1d1d; }
+    .airQualityTile .pollen-none, .airQualityTile .pollen-vlow { color: #22c55e; }
+    .airQualityTile .pollen-low, .airQualityTile .pollen-lowmod { color: #eab308; }
+    .airQualityTile .pollen-moderate { color: #f97316; }
+    .airQualityTile .pollen-high { color: #ef4444; }
+    .airQualityTile .pollen-vhigh { color: #7f1d1d; }
+
+    /* Celestial module — 2×3 layout, 6 metrics */
+    .celestialTile { width: 700px; height: 489px; position: relative; }
+    .celestialTile .celestialCell { position: absolute; }
+    .celestialTile .celestialLabel { display: block; margin-bottom: 4px; font-size: 36px; font-weight: 700; color: var(--muted); }
+    .celestialTile .celestialVal { font-size: 52px; font-weight: 700; line-height: 1; color: var(--text); }
+    .celestialTile .phase-val,
+    .celestialTile .next-season-val { font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- Threat bar -->
+    <header class="threatBar">
+      <div class="content">
+        <span class="placeholder" id="threat_txt">Conditions / Alerts — placeholder</span>
+      </div>
+    </header>
+
+    <!-- Main grid: 3 cols × 2 rows, center = wind+tide -->
+    <main class="grid">
+      <!-- Left column: 8 boxes (2×4) — plug-and-play modules -->
+      <div class="leftGrid" id="leftGrid">
+        <div class="tile slot" data-slot="0"></div>
+        <div class="tile slot" data-slot="1"></div>
+        <div class="tile slot" data-slot="2"></div>
+        <div class="tile slot" data-slot="3"></div>
+        <div class="tile slot" data-slot="4"></div>
+        <div class="tile slot" data-slot="5"></div>
+        <div class="tile slot" data-slot="6"></div>
+        <div class="tile slot" data-slot="7"></div>
+      </div>
+
+      <!-- Center: Wind + Tide -->
+      <div class="centerStack">
+        <div class="tile windTile">
+          <div class="windAbs">
+            <div class="wCorner cTL"><div class="clabel">AVG 10</div><div class="cvalue" id="w_avg10">--</div><div class="cdir" id="w_avg10_dir">--</div></div>
+            <div class="wCorner cTR"><div class="clabel">GUST</div><div class="cvalue" id="w_gust">--</div><div class="cdir" id="w_gust_dir">--</div></div>
+            <div class="wCorner cBL"><div class="clabel">MAX 10</div><div class="cvalue" id="w_max10">--</div><div class="cdir" id="w_max10_dir">--</div></div>
+            <div class="wCorner cBR"><div class="clabel">MAX DAY</div><div class="cvalue" id="w_maxday">--</div><div class="cdir" id="w_maxday_dir">--</div><div class="cdir cts" id="w_maxday_ts">--</div></div>
+            <svg class="compass" viewBox="0 0 360 360" preserveAspectRatio="xMidYMid meet">
+              <circle class="ring" cx="180" cy="180" r="150"/>
+              <g>
+                <line class="tick" x1="180" y1="33" x2="180" y2="48"/>
+                <g transform="rotate(15 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(30 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(45 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+                <g transform="rotate(60 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(75 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(90 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+                <g transform="rotate(105 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(120 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(135 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+                <g transform="rotate(150 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(165 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(180 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+                <g transform="rotate(195 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(210 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(225 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+                <g transform="rotate(240 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(255 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(270 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+                <g transform="rotate(285 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(300 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(315 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+                <g transform="rotate(330 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+                <g transform="rotate(345 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+              </g>
+              <text class="lbl" x="180" y="6" text-anchor="middle">N</text>
+              <g transform="rotate(45 180 180)"><text class="lbl" x="180" y="6" text-anchor="middle">NE</text></g>
+              <text class="lbl" x="364" y="186" text-anchor="middle">E</text>
+              <g transform="rotate(135 180 180)"><text class="lbl" x="180" y="6" text-anchor="middle">SE</text></g>
+              <text class="lbl" x="180" y="366" text-anchor="middle">S</text>
+              <g transform="rotate(225 180 180)"><text class="lbl" x="180" y="6" text-anchor="middle">SW</text></g>
+              <text class="lbl" x="-10" y="186" text-anchor="middle">W</text>
+              <g transform="rotate(315 180 180)"><text class="lbl" x="180" y="6" text-anchor="middle">NW</text></g>
+              <g id="w_needle" transform="rotate(0 180 180)">
+                <polygon class="needle" points="180,44 170,96 180,86 190,96" transform="translate(180,44) scale(0.7) translate(-180,-44)"/>
+              </g>
+              <text class="dir" x="180" y="120" text-anchor="middle" id="w_dir_txt">--</text>
+              <text class="speed" x="180" y="190" text-anchor="middle" dominant-baseline="middle" id="w_speed_txt">--</text>
+              <text class="unit" x="180" y="260" text-anchor="middle">MPH</text>
+            </svg>
+          </div>
+        </div>
+        <div class="tile tideTile">
+          <div class="tideAbs">
+            <div class="tideCallout tideTL"><div class="tlbl" id="tide_next_lbl">Next</div><div class="tval" id="tide_next_time">--:--</div><div class="tsub" id="tide_next_ht">--</div></div>
+            <div class="tideCallout tideTR"><div class="tlbl" id="tide_next2_lbl">Next</div><div class="tval" id="tide_next2_time">--:--</div><div class="tsub" id="tide_next2_ht">--</div></div>
+            <div class="tideCallout tideBL"><div class="tlbl" id="tide_since_lbl">Since</div><div class="tval" id="tide_since_val">--:--</div></div>
+            <div class="tideCallout tideBR"><div class="tlbl" id="tide_range_lbl">Range</div><div class="tval" id="tide_range_val">--.-'</div></div>
+            <svg class="tideClock" viewBox="0 0 360 360">
+              <circle class="ring" cx="180" cy="180" r="152"/>
+              <g class="tideNums">
+                <text class="tideNum" id="tide_r5" x="222" y="78" text-anchor="middle">5</text>
+                <text class="tideNum" id="tide_r4" x="279" y="121" text-anchor="middle">4</text>
+                <text class="tideNum" id="tide_r3" x="302" y="192" text-anchor="middle">3</text>
+                <text class="tideNum" id="tide_r2" x="279" y="268" text-anchor="middle">2</text>
+                <text class="tideNum" id="tide_r1" x="232" y="302" text-anchor="middle">1</text>
+                <text class="tideNum" id="tide_l5" x="128" y="302" text-anchor="middle">5</text>
+                <text class="tideNum" id="tide_l4" x="81" y="268" text-anchor="middle">4</text>
+                <text class="tideNum" id="tide_l3" x="58" y="192" text-anchor="middle">3</text>
+                <text class="tideNum" id="tide_l2" x="81" y="121" text-anchor="middle">2</text>
+                <text class="tideNum" id="tide_l1" x="138" y="78" text-anchor="middle">1</text>
+              </g>
+              <rect class="tideMarker" x="176" y="24" width="8" height="8"/>
+              <rect class="tideMarker" x="176" y="328" width="8" height="8"/>
+              <text class="lbl" x="180" y="16" text-anchor="middle">High Tide</text>
+              <text class="lbl" x="362" y="186" text-anchor="middle">Ebb</text>
+              <text class="lbl" x="-6" y="186" text-anchor="middle">Flow</text>
+              <text class="lbl" x="180" y="354" text-anchor="middle">Low Tide</text>
+              <g id="tide_hand" transform="rotate(0 180 180)">
+                <polygon class="tideNeedle" points="180,44 170,96 180,86 190,96" transform="translate(180,44) scale(0.7) translate(-180,-44)"/>
+              </g>
+              <text class="tideState" id="tide_state_txt" x="180" y="126" text-anchor="middle">--</text>
+              <text class="tideMain" x="180" y="190" text-anchor="middle" dominant-baseline="middle" id="tide_main_txt">--</text>
+              <text class="tideSub" x="180" y="243" text-anchor="middle" id="tide_sub_txt">
+                <tspan id="tide_time_line" x="180" dy="0">--:--</tspan>
+                <tspan id="tide_to_line" x="180" dy="22">To --</tspan>
+              </text>
+            </svg>
+          </div>
+        </div>
+        <div class="tile middleBottomTile">
+          <div class="ph">Middle bottom — placeholder</div>
+        </div>
+      </div>
+
+      <!-- Right column -->
+      <div class="tile radarTile" id="radarTile" style="grid-column:3; grid-row:1;">
+        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&v=5" title="KCLX Radar"></iframe>
+      </div>
+      <div class="tile radarTile regionTile" style="grid-column:3; grid-row:2;">
+        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&opacity=42&v=1" title="MRMS Eastern US"></iframe>
+      </div>
+    </main>
+    <div class="verBadge" aria-hidden="true">LOCKED</div>
+    <div class="verBadge" style="bottom: 32px; right: 7px;" id="sizeDebug"></div>
+  </div>
+
+  <script>
+    // Config: pi-wx data via same-origin proxy (serve_frames proxies /pi-wx-data/* -> 192.168.2.174)
+    // Use explicit origin so fetch works regardless of how the page was loaded (localhost vs IP vs hostname)
+    const DATA_BASE = (typeof location !== "undefined" && location.origin) ? location.origin + "/pi-wx-data" : "/pi-wx-data";
+
+    function $(id) { return document.getElementById(id); }
+    function setText(id, v) { const el = $(id); if (el && v != null) el.textContent = String(v); }
+    function setNum(id, n) { const el = $(id); if (el) el.textContent = (n != null && Number.isFinite(n)) ? Math.round(n) : "--"; }
+
+    // Layout diagnostics — actual dimensions (source of truth)
+    let dataOk = false;
+    requestAnimationFrame(() => {
+      const leftBoxes = document.querySelectorAll(".leftGrid .tile");
+      const leftGrid = document.querySelector(".leftGrid");
+      const radar = document.querySelector(".radarTile");
+      const el = document.getElementById("sizeDebug");
+      function updateDebug() {
+        let msg = "";
+        if (leftGrid) {
+          const lr = leftGrid.getBoundingClientRect();
+          msg += "LEFT: " + Math.round(lr.width) + "×" + Math.round(lr.height);
+        }
+        if (radar) {
+          const rr = radar.getBoundingClientRect();
+          msg += " | RADAR: " + Math.round(rr.width) + "×" + Math.round(rr.height);
+        }
+        msg += " | viewport: " + window.innerWidth + "×" + window.innerHeight;
+        msg += " | data: " + (dataOk ? "OK" : "...");
+        if (el) el.textContent = msg;
+      }
+      leftBoxes.forEach((box, i) => {
+        const r = box.getBoundingClientRect();
+        const label = box.querySelector(".ph");
+        if (label && !box.classList.contains("module-mounted")) {
+          const dims = Math.round(r.width) + "×" + Math.round(r.height);
+          label.textContent = (i + 1) + " (" + dims + ")";
+        }
+      });
+      updateDebug();
+      setInterval(updateDebug, 2000);
+    });
+
+    async function fetchJSON(url) {
+      const r = await fetch(url, { cache: "no-store", credentials: "omit" });
+      if (!r.ok) throw new Error(url + " " + r.status);
+      return r.json();
+    }
+
+    // ——— Plug-and-play module system ———
+    // SLOTS[0..7] = module id or null. Any module can go in any box (1–8).
+    // Box 1=slot 0, 2=slot 1, … 8=slot 7. Example: put temp in box 5 → SLOTS[4] = "current-temp"
+    const SLOTS = ["current-temp", "humidity", "rain-current", "rain-accumulation", "air-quality", "celestial", null, null];
+    const MODULES = {};
+  </script>
+  <script src="modules/current-temp.js"></script>
+  <script src="modules/humidity.js?v=11"></script>
+  <script src="modules/rain-current.js"></script>
+  <script src="modules/rain-accumulation.js?v=4"></script>
+  <script src="modules/air-quality.js?v=6"></script>
+  <script src="modules/celestial.js"></script>
+  <script>
+    function mountModules() {
+      const grid = document.getElementById("leftGrid");
+      if (!grid) return;
+      const slots = grid.querySelectorAll(".slot");
+      slots.forEach((slotEl, i) => {
+        const modId = SLOTS[i];
+        if (!modId || !MODULES[modId]) {
+          slotEl.innerHTML = `<div class="ph">${i + 1}</div>`;
+          return;
+        }
+        const mod = MODULES[modId];
+        slotEl.innerHTML = mod.render(i);
+        slotEl.classList.add("module-mounted");
+        mod.mount(slotEl, i);
+        const refresh = () => mod.refresh(slotEl, DATA_BASE);
+        refresh();
+        const iv = mod.intervalMs || 5000;
+        setInterval(refresh, iv);
+      });
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountModules);
+    else mountModules();
+
+    // Wind poll
+    function degToCardinal(deg) {
+      if (deg == null || !Number.isFinite(deg)) return null;
+      const d = ((Number(deg) % 360) + 360) % 360;
+      const cards = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+      const i = Math.round(d / 22.5) % 16;
+      return cards[i];
+    }
+    function fmtTime12(ts) {
+      if (!ts) return null;
+      const s = String(ts).replace(" ", "T");
+      const d = new Date(s.replace(/([+-]\d{2})(\d{2})$/, "$1:$2"));
+      if (isNaN(d.getTime())) return null;
+      const h = d.getHours(), m = d.getMinutes();
+      const hh = (h % 12) || 12;
+      const ap = h >= 12 ? "pm" : "am";
+      return hh + ":" + String(m).padStart(2, "0") + ap;
+    }
+    (function windPoll() {
+      fetchJSON(DATA_BASE + "/data/wind.json").then(d => {
+        dataOk = true;
+        const w = d.wind || d;
+        const dir = Number(w.dir_deg ?? w.wind_dir_deg);
+        const speed = Number(w.speed_mph ?? w.wind_speed_mph);
+        setNum("w_speed_txt", speed);
+        setText("w_dir_txt", Number.isFinite(dir) ? Math.round(dir) + "°" : "--");
+        setNum("w_avg10", w.avg_10m_mph ?? w.avg10_mph);
+        setNum("w_gust", w.gust_mph ?? w.wind_gust_mph);
+        setNum("w_max10", w.max_gust_10m_mph ?? w.max10_mph);
+        const maxDay = w.max_day_mph ?? w.max_gust_day_mph;
+        if (maxDay != null && Number.isFinite(maxDay)) setText("w_maxday", Math.round(maxDay));
+        const needle = $("w_needle");
+        if (needle && Number.isFinite(dir)) needle.setAttribute("transform", "rotate(" + dir + " 180 180)");
+        const dAvg = Number(w.avg_10m_dir_deg ?? w.avg10_dir_deg ?? dir);
+        const dGust = Number(w.gust_dir_deg ?? w.wind_gust_dir ?? dir);
+        const dMax10 = Number(w.max_gust_10m_dir_deg ?? w.max10_dir_deg ?? dir);
+        setText("w_avg10_dir", degToCardinal(dAvg) ?? "--");
+        setText("w_gust_dir", degToCardinal(dGust) ?? "--");
+        setText("w_max10_dir", degToCardinal(dMax10) ?? "--");
+      }).catch(() => {});
+      setTimeout(windPoll, 3000);
+    })();
+
+    // Tide — a9p_tide.js logic
+    (function(){
+      function setTextSticky(id, txt){ const el = $(id); if(el){ const v = String(txt); if(el.textContent !== v) el.textContent = v; } }
+      function _fmtHM(m){ return Math.floor(m/60) + ":" + String(m%60).padStart(2,"0"); }
+      function _fmtTime12(d){ if(!d || isNaN(d.getTime())) return "--:--"; const h=d.getHours(), m=String(d.getMinutes()).padStart(2,"0"), ap=(h>=12?"pm":"am"), hh=(h%12)||12; return hh+":"+m+ap; }
+      function parseLocal(ts){ return new Date(String(ts).replace(" ","T")); }
+      async function refreshTide(){
+        try{
+          const r = await fetch(DATA_BASE + "/data/tide.json?ts=" + Date.now(), { cache: "no-store", credentials: "omit" });
+          if(!r.ok) throw new Error("HTTP " + r.status);
+          const j = await r.json();
+          const t = j.tide || {};
+          const ev = (t.events_hilo || []).slice();
+          if(ev.length < 2) return;
+          const now = new Date();
+          let prev_i = -1, next_i = -1;
+          for(let i=0;i<ev.length;i++){
+            const tLocal = parseLocal(ev[i].t_local);
+            if(tLocal <= now) prev_i = i;
+            if(tLocal > now){ next_i = i; break; }
+          }
+          if(next_i < 0) return;
+          let prev, t0;
+          if(prev_i >= 0){
+            prev = ev[prev_i];
+            t0 = parseLocal(prev.t_local);
+          } else {
+            const t1Next = parseLocal(ev[next_i].t_local);
+            const cap = Math.min(now.getTime(), t1Next.getTime());
+            const dayMs = 24 * 60 * 60 * 1000;
+            let best_i = -1, best_back = -Infinity;
+            for(let i=0;i<ev.length;i++){
+              const ti = parseLocal(ev[i].t_local).getTime();
+              const tBack = ti - dayMs;
+              if(tBack < cap && tBack > best_back){ best_back = tBack; best_i = i; }
+            }
+            if(best_i < 0) return;
+            prev = { type: ev[best_i].type, height_ft: ev[best_i].height_ft };
+            t0 = new Date(best_back);
+          }
+          const next = ev[next_i];
+          const t1 = parseLocal(next.t_local);
+          const h0 = Number(prev.height_ft), h1 = Number(next.height_ft);
+          if(!isFinite(h0) || !isFinite(h1)) return;
+          const span = t1 - t0;
+          if(!(span > 0)) return;
+          let u = (now - t0) / span;
+          if(u < 0) u = 0; if(u > 1) u = 1;
+          const height = h0 + (h1 - h0) * 0.5 * (1 - Math.cos(Math.PI * u));
+          setTextSticky("tide_main_txt", height.toFixed(1));
+          const msLeft = Math.max(0, t1 - now);
+          const minsLeft = Math.round(msLeft / 60000);
+          const dur = _fmtHM(minsLeft);
+          const type = (next.type === "H") ? "High" : "Low";
+          setTextSticky("tide_next_lbl", "Next " + type);
+          setTextSticky("tide_next_time", _fmtTime12(t1));
+          setTextSticky("tide_next_ht", h1.toFixed(1) + "'");
+          const next2 = (next_i + 1 < ev.length) ? ev[next_i + 1] : null;
+          if(next2){
+            const t2 = parseLocal(next2.t_local), h2 = Number(next2.height_ft);
+            const type2 = (next2.type === "H") ? "High" : "Low";
+            setTextSticky("tide_next2_lbl", "Next " + type2);
+            setTextSticky("tide_next2_time", _fmtTime12(t2));
+            setTextSticky("tide_next2_ht", (isFinite(h2) ? h2.toFixed(1) : "--") + "'");
+            setTextSticky("tide_range_val", isFinite(h2) ? Math.abs(h2 - h1).toFixed(1) + "'" : "--.-'");
+          } else {
+            setTextSticky("tide_next2_lbl", "Next");
+            setTextSticky("tide_next2_time", "--:--");
+            setTextSticky("tide_next2_ht", "--");
+            setTextSticky("tide_range_val", "--.-'");
+          }
+          const minsSince = Math.round(Math.max(0, now - t0) / 60000);
+          setTextSticky("tide_since_lbl", "Since " + (prev.type === "H" ? "High" : "Low"));
+          setTextSticky("tide_since_val", _fmtHM(minsSince));
+          setTextSticky("tide_time_line", dur);
+          setTextSticky("tide_to_line", "To " + type);
+          setTextSticky("tide_state_txt", (prev.type === "L" && next.type === "H") ? "Rising" : "Falling");
+          let ang = (prev.type === "L" && next.type === "H") ? 180 + 180 * u : 180 * u;
+          if(ang >= 360) ang -= 360;
+          const hand = $("tide_hand");
+          if(hand) hand.setAttribute("transform", "rotate(" + ang.toFixed(2) + " 180 180)");
+        }catch(e){}
+      }
+      setInterval(refreshTide, 3000);
+      refreshTide();
+    })();
+
+    // Conditions + Extremes poll
+    (function condPoll() {
+      Promise.all([
+        fetchJSON(DATA_BASE + "/data/now.json"),
+        fetchJSON(DATA_BASE + "/data/rain.json"),
+        fetchJSON(DATA_BASE + "/data/extremes.json")
+      ]).then(([now, rain, ex]) => {
+        const n = now || {};
+        setText("c_temp", n.temp_f != null ? Math.round(n.temp_f) + "°" : "--");
+        setText("c_hum", n.humidity_pct != null ? n.humidity_pct + "%" : "--");
+        setText("c_press", n.pressure_inhg != null ? n.pressure_inhg.toFixed(2) + " in" : "--");
+        const rainToday = rain && (rain.rain ? rain.rain.today_in : rain.today_in);
+        setText("c_rain", rainToday != null ? Number(rainToday).toFixed(2) + " in" : "--");
+        const e = (ex && ex.extremes) ? ex.extremes : (ex || {});
+        const t = e.temp_f || {};
+        const w = e.wind_gust_mph || {};
+        const day = t.day || {}, month = t.month || {}, ytd = t.ytd || {};
+        const wd = w.day || {}, wm = w.month || {}, wy = w.ytd || {};
+        setText("w_maxday", (wd.hi != null && Number.isFinite(wd.hi)) ? Math.round(wd.hi) : "--");
+        const maxDayDir = Number(wd.hi_dir_deg ?? wd.dir ?? wd.dir_deg);
+        setText("w_maxday_dir", degToCardinal(maxDayDir) ?? "--");
+        const hiTs = wd.hi_ts;
+        setText("w_maxday_ts", hiTs ? fmtTime12(hiTs) : "--");
+        setText("ex_day_hi", day.hi != null ? Math.round(day.hi) + "°" : "--");
+        setText("ex_day_lo", day.lo != null ? Math.round(day.lo) + "°" : "--");
+        setText("ex_day_wind", wd.hi != null ? wd.hi + " mph" : "--");
+        setText("ex_month_hi", month.hi != null ? Math.round(month.hi) + "°" : "--");
+        setText("ex_month_lo", month.lo != null ? Math.round(month.lo) + "°" : "--");
+        setText("ex_month_wind", wm.hi != null ? wm.hi + " mph" : "--");
+        setText("ex_ytd_hi", ytd.hi != null ? Math.round(ytd.hi) + "°" : "--");
+        setText("ex_ytd_lo", ytd.lo != null ? Math.round(ytd.lo) + "°" : "--");
+        setText("ex_ytd_wind", wy.hi != null ? wy.hi + " mph" : "--");
+      }).catch(() => {});
+      setTimeout(condPoll, 5000);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes,viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>Charleston Radar</title>
+  <style>
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html, body { margin:0; padding:0; height:100%; background:#000; color:#ddd; font-family:-apple-system,system-ui,sans-serif; overflow:hidden; touch-action:manipulation; }
+    body { padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); display:flex; flex-direction:column; }
+    .bar {
+      flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 8px;
+      background:rgba(0,0,0,.9); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+    }
+    .bar .title { font-size:18px; font-weight:600; }
+    .bar .btns { display:flex; gap:6px; align-items:center; }
+    .bar button {
+      min-width:44px; min-height:44px; padding:0 12px;
+      background:#333; color:#fff; border:1px solid #555; border-radius:10px;
+      font-size:16px; cursor:pointer; -webkit-touch-callout:none; user-select:none;
+    }
+    .bar button:active { background:#444; }
+    .bar select { min-height:44px; padding:0 10px; background:#333; color:#fff; border:1px solid #555; border-radius:10px; font-size:14px; cursor:pointer; }
+    .bar .meta { font-size:13px; opacity:.9; font-variant-numeric:tabular-nums; }
+    .stage {
+      flex:1; position:relative; min-height:0; overflow:hidden;
+      touch-action:none; -webkit-user-select:none; user-select:none;
+    }
+    .view {
+      position:absolute; inset:0; transform-origin:0 0; will-change:transform;
+    }
+    .view img {
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:contain; object-position:0 0;
+      image-rendering:crisp-edges; image-rendering:pixelated; pointer-events:none;
+    }
+    #base { z-index:1; image-rendering:auto; }
+    #radar { z-index:2; }
+    .location-dot {
+      position:absolute; z-index:3; width:8px; height:8px;
+      background:#3b82f6; border-radius:50%; transform:translate(-50%,-50%);
+      pointer-events:none; box-shadow:0 0 4px rgba(0,0,0,.5);
+    }
+    .frameStamp {
+      position:absolute; bottom:12px; right:12px; z-index:4;
+      background:rgba(0,0,0,.75); color:#fff; padding:8px 12px;
+      font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; border-radius:8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <span class="title">Charleston</span>
+    <div class="btns">
+      <button id="play" aria-label="Play">▶</button>
+      <button id="back" aria-label="Previous">◀</button>
+      <button id="fwd" aria-label="Next">▶</button>
+      <select id="frameLimit" title="Frames in loop">
+        <option value="6">6</option>
+        <option value="12">12</option>
+        <option value="24" selected>24</option>
+        <option value="36">36</option>
+        <option value="48">48</option>
+        <option value="72">72</option>
+      </select>
+    </div>
+    <span class="meta"><span id="idx">0</span>/<span id="count">0</span> <span id="ts">—</span></span>
+  </div>
+  <div class="stage" id="stage">
+    <div class="view" id="view">
+      <img id="base" src="/basemaps/basemap_MRWcenter_1600.svg?v=260" alt="">
+      <img id="radar" alt="">
+      <div class="location-dot" id="locationDot"></div>
+    </div>
+    <div id="frameStamp" class="frameStamp">—</div>
+  </div>
+
+<script>
+(async function () {
+  const SITE = "KCLX";
+  const WX_SERVE = "http://192.168.2.2:8080";
+  const BASE_URL = (window.location.origin && window.location.origin !== "null" && !window.location.origin.startsWith("file"))
+    ? window.location.origin : WX_SERVE;
+  let manifestUrl = `${BASE_URL}/${SITE}/manifest.json`;
+  let frameBase = `${BASE_URL}/${SITE}/`;
+  const radar = document.getElementById("radar");
+  const view = document.getElementById("view");
+  const stage = document.getElementById("stage");
+  const LOOP_HOLD_MS = 1000;
+  const SPEED_MS = 200;
+  const FRAME_LIMIT_OPTS = [6, 12, 24, 36, 48, 72];
+  const FRAME_LIMIT_KEY = "mrw_mobile_frame_limit_kclx";
+  const POLL_MS = 15000;
+
+  let frameLimit = parseInt(localStorage.getItem(FRAME_LIMIT_KEY) || "24", 10);
+  if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 24;
+
+  let allFrames = [], frames = [], i = 0, timer = null;
+  let scale = 1, panX = 0, panY = 0;
+  const MIN_SCALE = 0.5, MAX_SCALE = 4;
+  let touchStartDist = 0, touchStartScale = 1, touchStartX = 0, touchStartY = 0, touchStartPanX = 0, touchStartPanY = 0;
+
+  function applyTransform() { view.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`; }
+
+  function setFrame(n) {
+    if (!frames.length) return;
+    i = Math.max(0, Math.min(n, frames.length - 1));
+    const name = frames[i];
+    radar.src = frameBase + name + "?v=" + Date.now();
+    const ts = name.replace(".png", "");
+    const timeStr = new Date(Date.UTC(parseInt(ts.slice(0,4)), parseInt(ts.slice(4,6))-1, parseInt(ts.slice(6,8)), parseInt(ts.slice(9,11)), parseInt(ts.slice(11,13)))).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",hour12:true});
+    document.getElementById("idx").textContent = i + 1;
+    document.getElementById("count").textContent = frames.length;
+    document.getElementById("ts").textContent = timeStr;
+    document.getElementById("frameStamp").textContent = timeStr;
+  }
+
+  function advance() {
+    if (i >= frames.length - 1) {
+      clearInterval(timer); timer = null;
+      setTimeout(() => { setFrame(0); timer = setInterval(advance, SPEED_MS); }, LOOP_HOLD_MS);
+    } else setFrame(i + 1);
+  }
+  function play() { if (timer || !frames.length) return; document.getElementById("play").textContent = "⏸"; timer = setInterval(advance, SPEED_MS); }
+  function pause() { if (!timer) return; clearInterval(timer); timer = null; document.getElementById("play").textContent = "▶"; }
+
+  document.getElementById("play").onclick = () => timer ? pause() : play();
+  document.getElementById("back").onclick = () => { pause(); if (frames.length) setFrame((i - 1 + frames.length) % frames.length); };
+  document.getElementById("fwd").onclick = () => { pause(); if (frames.length) setFrame((i + 1) % frames.length); };
+
+  const frameLimitEl = document.getElementById("frameLimit");
+  frameLimitEl.value = String(frameLimit);
+  frameLimitEl.onchange = () => {
+    frameLimit = parseInt(frameLimitEl.value, 10);
+    localStorage.setItem(FRAME_LIMIT_KEY, String(frameLimit));
+    frames = allFrames.slice(-frameLimit);
+    i = Math.min(i, frames.length - 1);
+    if (frames.length) setFrame(i);
+    if (timer) { pause(); play(); }
+  };
+
+  stage.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2) {
+      touchStartDist = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+      touchStartScale = scale;
+      touchStartPanX = panX; touchStartPanY = panY;
+    } else if (e.touches.length === 1) {
+      touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+      touchStartPanX = panX; touchStartPanY = panY;
+    }
+  }, { passive: true });
+
+  stage.addEventListener("touchmove", (e) => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      const d = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+      scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, touchStartScale * (d / touchStartDist)));
+      applyTransform();
+    } else if (e.touches.length === 1) {
+      panX = touchStartPanX + (e.touches[0].clientX - touchStartX);
+      panY = touchStartPanY + (e.touches[0].clientY - touchStartY);
+      applyTransform();
+    }
+  }, { passive: false });
+
+  let swipeStartX = 0;
+  stage.addEventListener("touchend", (e) => {
+    if (e.changedTouches.length === 1 && e.touches.length === 0) {
+      const dx = e.changedTouches[0].clientX - swipeStartX;
+      if (Math.abs(dx) > 50 && frames.length) {
+        pause();
+        if (dx > 0) setFrame((i - 1 + frames.length) % frames.length);
+        else setFrame((i + 1) % frames.length);
+      }
+    }
+  }, { passive: true });
+  stage.addEventListener("touchstart", (e) => { if (e.touches.length === 1) swipeStartX = e.touches[0].clientX; }, { passive: true });
+
+  async function loadManifest() {
+    const tryFetch = async (base) => {
+      const resp = await fetch(`${base}/${SITE}/manifest.json`, { cache: "no-store" });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const mf = await resp.json();
+      if (!mf.frames || mf.frames.length === 0) throw new Error("empty");
+      return { mf, base };
+    };
+    try {
+      let mf, base = BASE_URL;
+      try { ({ mf, base } = await tryFetch(BASE_URL)); } catch (_) { ({ mf, base } = await tryFetch(WX_SERVE)); manifestUrl = `${base}/${SITE}/manifest.json`; frameBase = `${base}/${SITE}/`; }
+      allFrames = mf.frames || [];
+      frames = allFrames.slice(-frameLimit);
+      i = frames.length ? frames.length - 1 : 0;
+      if (frames.length) setFrame(i);
+    } catch (e) { document.getElementById("ts").textContent = "Load failed"; }
+  }
+
+  async function refreshManifest() {
+    try {
+      const resp = await fetch(manifestUrl + "?t=" + Date.now(), { cache: "no-store" });
+      if (!resp.ok) return;
+      const mf = await resp.json();
+      allFrames = mf.frames || [];
+      frames = allFrames.slice(-frameLimit);
+      i = Math.min(i, frames.length - 1);
+      if (frames.length) setFrame(i);
+    } catch (_) {}
+  }
+
+  (function placeLocationDot() {
+    const CENTER_LAT = 31.919173, CENTER_LON = -81.075938, HALF_M = 483000;
+    const LOC_LAT = 31.919114, LOC_LON = -81.075932;
+    const to3857 = (lon, lat) => [lon * 20037508.34 / 180, Math.log(Math.tan((90 + lat) * Math.PI / 360)) * (20037508.34 / Math.PI)];
+    const [cx, cy] = to3857(CENTER_LON, CENTER_LAT);
+    const [ux, uy] = to3857(LOC_LON, LOC_LAT);
+    const xmin = cx - HALF_M, xmax = cx + HALF_M, ymin = cy - HALF_M, ymax = cy + HALF_M;
+    const dot = document.getElementById("locationDot");
+    dot.style.left = ((ux - xmin) / (xmax - xmin)) * 100 + "%";
+    dot.style.top = ((ymax - uy) / (ymax - ymin)) * 100 + "%";
+  })();
+
+  await loadManifest();
+  setInterval(refreshManifest, POLL_MS);
+})();
+</script>
+</body>
+</html>

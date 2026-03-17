@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Data / runtime (rsync excludes)
+serve_cache/
+basemap/
+scratch/
+raw_level2/
+raw/
+logs/
+logs_level2/
+work/
+serve_root/
+out/
+
+# Large files
+*.bsp
+de421.bsp
+
+# OS
+.DS_Store
+
+# IDE
+.cursor/
+
+# Backups
+backups/
+review_this/
+
+# Secrets (use .example as template)
+conf/mapbox_config.json
+conf/air_api_keys.json

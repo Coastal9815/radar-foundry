@@ -1,0 +1,741 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hyper-Local X (Xweather)</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.js"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; background:#000; color:#ddd; font-family:-apple-system,system-ui,sans-serif; overflow:hidden; }
+    #map { position:fixed; inset:0; width:100%; height:100%; }
+    .top {
+      position:fixed; top:0; left:0; right:0; z-index:10;
+      display:flex; justify-content:space-between; align-items:center; gap:8px; padding:12px 16px; flex-wrap:wrap;
+      background:rgba(0,0,0,.75); backdrop-filter:blur(4px);
+    }
+    @media (max-width: 480px), (max-height: 400px) {
+      .top { padding:4px 6px; gap:4px; }
+      .top .banner-title { font-size:11px; }
+      .top .meta { font-size:10px; }
+      .top button { padding:2px 4px; font-size:12px; }
+      .upper-right { top:28px; }
+    }
+    .btns { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+    button { background:#222; color:#ddd; border:1px solid #444; padding:4px 8px; border-radius:6px; cursor:pointer; }
+    button:hover { background:#2a2a2a; }
+    .top .banner-title { position:absolute; left:50%; transform:translateX(-50%); font-size:16px; font-weight:600; pointer-events:none; }
+    .top .meta { font-size:16px; opacity:.9; }
+    .top button { font-size:16px; }
+    .stamp {
+      position:fixed; bottom:8px; right:8px; z-index:10;
+      background:rgba(0,0,0,.7); color:#fff; padding:4px 8px;
+      font-size:12px; font-variant-numeric:tabular-nums;
+      border-radius:4px; pointer-events:none;
+    }
+    @media (max-width: 480px), (max-height: 400px) {
+      .stamp { padding:2px 4px; font-size:9px; bottom:4px; right:4px; }
+    }
+    .upper-right {
+      position:fixed; top:48px; right:12px; z-index:10;
+      display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+      pointer-events:none;
+      transform-origin: top right;
+    }
+    .freshness {
+      width:32px; height:32px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:18px; font-weight:bold;
+    }
+    .freshness.live { background:#22c55e; color:#fff; }
+    .freshness.stale { background:#eab308; color:#000; }
+    .freshness.old { background:#ef4444; color:#fff; }
+    .data-box {
+      position:relative; width:260px; height:326px;
+      background:rgba(235,235,235,0.9); color:#1e3a5f;
+      border-radius:10px; box-sizing:border-box;
+      margin:0; padding:0;
+    }
+    .data-box-outline {
+      position:absolute; left:10px; right:10px;
+      border:1px solid #64748b; border-radius:6px;
+      box-sizing:border-box;
+      margin:0; padding:0;
+      pointer-events:none;
+    }
+    .data-box-outline-close {
+      top:4px; left:10px; right:10px; height:170px;
+    }
+    .data-box-outline-area {
+      top:176px; left:10px; right:10px; height:135px;
+    }
+    .data-box-header {
+      position:absolute; left:14px; top:8px; right:14px; z-index:1;
+      margin:0; padding:0;
+      font-size:12px; font-weight:700; color:#b91c1c;
+    }
+    .data-box-header-s2 {
+      position:absolute; left:14px; top:180px; right:14px; z-index:1;
+      margin:0; padding:0;
+      font-size:12px; font-weight:700; color:#1e40af;
+    }
+    .data-row {
+      position:absolute; left:14px; right:14px; height:20px; line-height:20px; z-index:1;
+      margin:0; padding:0;
+    }
+    .data-row:nth-child(4) { top:32px; }
+    .data-row:nth-child(5) { top:70px; }
+    .data-row:nth-child(6) { top:108px; }
+    .data-row:nth-child(7) { top:146px; }
+    .data-row:nth-child(8) { top:184px; }
+    .data-row:nth-child(9) { top:214px; }
+    .data-row:nth-child(10) { top:252px; }
+    .data-row:nth-child(11) { top:290px; }
+    .data-row .label { position:absolute; left:0; top:0; font-size:14px; font-weight:600; opacity:.9; color:#1e40af; }
+    .data-row .value { position:absolute; right:0; top:0; font-size:14px; font-variant-numeric:tabular-nums; font-weight:600; color:#1e40af; }
+    .data-row.close-alert .label,
+    .data-row.close-alert .value { color:#b91c1c; }
+    .data-row.close-alert.close-yellow .label,
+    .data-row.close-alert.close-yellow .value { color:#eab308; }
+    .data-row.close-alert.close-flash .label,
+    .data-row.close-alert.close-flash .value { animation: close-flash 1s ease-in-out 5; }
+    @keyframes close-flash { 0%,100%{ opacity:1 } 50%{ opacity:0.3 } }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="top">
+    <span class="banner-title">Coastal Lightning Observations</span>
+    <div class="btns" style="flex-shrink:0">
+      <button id="refresh" title="Refresh">↻</button>
+      <button id="fullscreen" title="Fullscreen">⛶</button>
+    </div>
+    <div class="meta" style="flex-shrink:0">
+      Strikes: <span id="count">0</span>
+      · <span id="ts">—</span>
+    </div>
+  </div>
+  <div id="stamp" class="stamp">Do Not Use for Safety Decisions</div>
+  <div id="upper-right" class="upper-right">
+    <div id="freshness" class="freshness" title="Data freshness">✓</div>
+    <div class="data-box">
+      <div class="data-box-outline data-box-outline-close"></div>
+      <div class="data-box-outline data-box-outline-area"></div>
+      <div class="data-box-header">Range: 0-25 Miles</div>
+      <div id="close-row-2" class="data-row"><span class="label">Close</span><span id="close-line2" class="value">NONE</span></div>
+      <div id="close-row-3" class="data-row"><span class="label">Now</span><span id="close-line3" class="value">NONE</span></div>
+      <div id="close-row-4" class="data-row"><span class="label">Close/Minute</span><span id="close-per-min" class="value">NONE</span></div>
+      <div class="data-row"><span class="label">Close/4 Hours</span><span id="close-4hr" class="value">NONE</span></div>
+      <div class="data-box-header-s2">Range: 26 - 135 Miles</div>
+      <div class="data-row"><span class="label">Now</span><span id="most-recent" class="value">NONE</span></div>
+      <div class="data-row">
+        <span class="label">Strikes/Minute</span>
+        <span id="strikes-per-min" class="value">NONE</span>
+      </div>
+      <div class="data-row">
+        <span class="label">Strikes/12 Hours</span>
+        <span id="strike-count" class="value">NONE</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+(async function () {
+  const urlParams = new URLSearchParams(location.search);
+  const embedW = parseInt(urlParams.get("width") || "0", 10);
+  const embedH = parseInt(urlParams.get("height") || "0", 10);
+  if (embedW > 0 && embedH > 0) {
+    const vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.setAttribute("content", `width=${embedW},height=${embedH},initial-scale=1,maximum-scale=1,user-scalable=no`);
+    document.documentElement.style.cssText = `width:${embedW}px;height:${embedH}px;overflow:hidden;`;
+    document.body.style.cssText = `width:${embedW}px;height:${embedH}px;overflow:hidden;margin:0;padding:0;`;
+    const mapEl = document.getElementById("map");
+    mapEl.style.cssText = `position:fixed;inset:0;width:${embedW}px;height:${embedH}px;`;
+    mapEl.offsetHeight;
+  }
+  const MAPBOX = {
+    accessToken: "YOUR_MAPBOX_PUBLIC_TOKEN",
+    style: "mapbox://styles/scott3294/cmlg0hi32000i01qw7tik8xdm"
+  };
+  const CENTER = [-81.075938, 31.919173];
+  const FIXED_RADIUS_MI = 135;
+  const MAX_RADIUS_MI = FIXED_RADIUS_MI;
+  const STRIKE_COUNT_RADIUS_MI = 135;
+  const STRIKE_COUNT_RADIUS_KM = STRIKE_COUNT_RADIUS_MI * 1.609344;
+  const CLOSE_RADIUS_MI = 25;
+  const CLOSE_RADIUS_KM = CLOSE_RADIUS_MI * 1.609344;
+  const CLOSE_RADIUS_KM_EPSILON = 0.02;
+  const WX_SERVE = "http://192.168.2.2:8080";
+
+  function boundsFor135MiEW(lon, lat, widthPx, heightPx) {
+    const degPerMiLon = 1 / (69 * Math.cos(lat * Math.PI / 180));
+    const lonSpanDeg = 2 * FIXED_RADIUS_MI * degPerMiLon;
+    const aspect = heightPx / widthPx;
+    const latSpanDeg = lonSpanDeg * Math.cos(lat * Math.PI / 180) * aspect;
+    return [[lon - lonSpanDeg / 2, lat - latSpanDeg / 2], [lon + lonSpanDeg / 2, lat + latSpanDeg / 2]];
+  }
+  function domainCircle(lon, lat, radiusMi) {
+    const R = 3959;
+    const points = 64;
+    const coords = [];
+    for (let i = 0; i <= points; i++) {
+      const brg = (i / points) * 2 * Math.PI;
+      const d = radiusMi / R;
+      const lat1 = Math.asin(Math.sin(lat * Math.PI / 180) * Math.cos(d) + Math.cos(lat * Math.PI / 180) * Math.sin(d) * Math.cos(brg));
+      const lon1 = lon * Math.PI / 180 + Math.atan2(Math.sin(brg) * Math.sin(d) * Math.cos(lat * Math.PI / 180), Math.cos(d) - Math.sin(lat * Math.PI / 180) * Math.sin(lat1));
+      coords.push([lon1 * 180 / Math.PI, lat1 * 180 / Math.PI]);
+    }
+    return { type: "Feature", geometry: { type: "Polygon", coordinates: [coords] }, properties: {} };
+  }
+  const BASE_URL = (window.location.origin && window.location.origin !== "null" && !window.location.origin.startsWith("file"))
+    ? window.location.origin : WX_SERVE;
+  const POINTS_URL = BASE_URL + "/lightning_points_xweather_local.geojson";
+  const RINGS_URL = BASE_URL + "/lightning_range_rings.geojson";
+  const POLL_MS = 2500;
+  const FLASH_DURATION_MS = 2000;
+  const BOLT_ICON_SIZE = 0.55;
+
+  function zoomScale(zoom) {
+    if (zoom < 5.5) return 0.5;
+    if (zoom < 7) return 0.7;
+    if (zoom < 8.5) return 1;
+    return 1.2;
+  }
+  function zoomIconScale(zoom) {
+    if (zoom < 5.5) return 0.6;
+    if (zoom < 7) return 0.8;
+    if (zoom < 8.5) return 1;
+    return 1.25;
+  }
+
+  const countEl = document.getElementById("count");
+  const tsEl = document.getElementById("ts");
+  const freshnessEl = document.getElementById("freshness");
+  const strikeCountEl = document.getElementById("strike-count");
+  const strikesPerMinEl = document.getElementById("strikes-per-min");
+  const mostRecentEl = document.getElementById("most-recent");
+  const closeRow2El = document.getElementById("close-row-2");
+  const closeRow3El = document.getElementById("close-row-3");
+  const closeLine2El = document.getElementById("close-line2");
+  const closeLine3El = document.getElementById("close-line3");
+  const closeRow4El = document.getElementById("close-row-4");
+  const closePerMinEl = document.getElementById("close-per-min");
+  const close4hrEl = document.getElementById("close-4hr");
+  let lastComputedAtUtc = null;
+  const strikeCountStore = new Map();
+  const STRIKE_COUNT_WINDOW_MS = 12 * 60 * 60 * 1000;
+  const allSeenStrikeKeys = new Set();
+  const flashUntilByKey = new Map();
+  let flashDataInitialized = false;
+  let lastRawFeatures = [];
+  let closeStrikesData = { count: 0, strikes: [] };
+  const closeStrikeStore = new Map();
+  const CLOSE_4HR_MS = 4 * 60 * 60 * 1000;
+  let lastCloseStrike = null;
+  let closeStrikeDisplayStart = 0;
+  const CLOSE_WINDOW_MS = 30 * 60 * 1000;
+  const CLOSE_RED_MS = 15 * 60 * 1000;
+  const CLOSE_FLASH_MS = 5000;
+
+  const JITTER_DEG = 0.0002;
+
+  function strikeKey(f) {
+    const c = f.geometry?.coordinates;
+    const t = f.properties?.timestamp_utc;
+    return c && t ? `${t}|${c[0]}|${c[1]}` : null;
+  }
+
+  function jitterOffset(key) {
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = ((h << 5) - h) + key.charCodeAt(i) | 0;
+    const dx = (h % 41) / 41 * 2 * JITTER_DEG - JITTER_DEG;
+    const dy = (Math.abs(h >> 8) % 41) / 41 * 2 * JITTER_DEG - JITTER_DEG;
+    return [dx, dy];
+  }
+
+  function transformFeaturesForFlash(features) {
+    const now = Date.now();
+    for (const [k, until] of flashUntilByKey.entries()) {
+      if (until < now) flashUntilByKey.delete(k);
+    }
+    return features.map(f => {
+      const key = strikeKey(f);
+      const props = f.properties || {};
+      if (!key) return f;
+      const [dx, dy] = jitterOffset(key);
+      const [lon, lat] = f.geometry?.coordinates || [0, 0];
+      const geom = { ...f.geometry, coordinates: [lon + dx, lat + dy] };
+      const distKm = props.distance_km;
+      const isClose = distKm != null && distKm <= CLOSE_RADIUS_KM + CLOSE_RADIUS_KM_EPSILON;
+      if (isClose) {
+        const ageMs = now - new Date(props.timestamp_utc).getTime();
+        if (ageMs >= 30 * 60 * 1000) return null;
+        const base = { ...f, geometry: geom, properties: { ...props } };
+        if (ageMs < 5 * 60 * 1000) {
+          const inJitterFlash = ageMs < 3000;
+          const flashOpacity = inJitterFlash ? 0.4 + 0.6 * (1 + Math.sin(now * 0.02)) / 2 : 1;
+          return { ...base, properties: { ...base.properties, client_render_type: "bolt", client_symbol: "bolt", client_icon_size: BOLT_ICON_SIZE, client_icon_opacity: flashOpacity, client_icon_color: "#b91c1c" } };
+        }
+        if (ageMs < 15 * 60 * 1000) {
+          return { ...base, properties: { ...base.properties, client_render_type: "cg", client_circle_color: "#b91c1c", client_circle_opacity: 1 } };
+        }
+        return { ...base, properties: { ...base.properties, client_render_type: "cg", client_circle_color: "#eab308", client_circle_opacity: 1 } };
+      }
+      if (!flashDataInitialized) {
+        allSeenStrikeKeys.add(key);
+      } else {
+        if (!allSeenStrikeKeys.has(key)) {
+          allSeenStrikeKeys.add(key);
+          flashUntilByKey.set(key, now + FLASH_DURATION_MS);
+        }
+      }
+      const flashUntil = flashUntilByKey.get(key);
+      const inFlash = flashUntil && now < flashUntil;
+      if (inFlash) {
+        return { ...f, geometry: geom, properties: { ...props, client_render_type: "bolt", client_symbol: "bolt", client_icon_size: BOLT_ICON_SIZE, client_icon_opacity: 1 } };
+      }
+      return { ...f, geometry: geom, properties: { ...props, client_render_type: props.render_type, client_symbol: props.symbol ?? props.render_type, client_icon_size: props.icon_size ?? 0.25, client_icon_opacity: props.icon_opacity ?? 1 } };
+    }).filter(Boolean);
+  }
+
+  function updateFreshness(computedAtUtc) {
+    if (computedAtUtc !== undefined) lastComputedAtUtc = computedAtUtc;
+    const ts = lastComputedAtUtc;
+    if (!freshnessEl) return;
+    if (!ts) {
+      freshnessEl.className = "freshness old";
+      freshnessEl.title = "No data";
+      return;
+    }
+    const ageSec = (Date.now() - new Date(ts).getTime()) / 1000;
+    freshnessEl.classList.remove("live", "stale", "old");
+    if (ageSec <= 15) {
+      freshnessEl.classList.add("live");
+      freshnessEl.title = "Live (within 15s)";
+    } else if (ageSec <= 30) {
+      freshnessEl.classList.add("stale");
+      freshnessEl.title = "Stale (" + Math.round(ageSec) + "s old)";
+    } else {
+      freshnessEl.classList.add("old");
+      freshnessEl.title = "Old (" + Math.round(ageSec) + "s old)";
+    }
+  }
+
+  function updateMostRecent(features) {
+    if (!mostRecentEl || !features || features.length === 0) {
+      if (mostRecentEl) mostRecentEl.textContent = "NONE";
+      return;
+    }
+    const in300 = features.filter(f => {
+      const d = f.properties?.distance_km;
+      return d != null && d <= STRIKE_COUNT_RADIUS_KM;
+    });
+    if (in300.length === 0) {
+      mostRecentEl.textContent = "NONE";
+      return;
+    }
+    let latestTs = null;
+    for (const f of in300) {
+      const t = f.properties?.timestamp_utc;
+      if (t && (!latestTs || t > latestTs)) latestTs = t;
+    }
+    const withLatestTs = in300.filter(f => f.properties?.timestamp_utc === latestTs);
+    let latest = withLatestTs[0];
+    for (const f of withLatestTs) {
+      const d = f.properties?.distance_km;
+      if (d != null && (latest.properties?.distance_km == null || d < latest.properties.distance_km)) latest = f;
+    }
+    const strikeAge = Date.now() - new Date(latest.properties?.timestamp_utc).getTime();
+    if (strikeAge > 15 * 60 * 1000) {
+      mostRecentEl.textContent = "NONE";
+      return;
+    }
+    const type = latest.properties?.strike_type || "—";
+    const bearing = latest.properties?.bearing_deg;
+    const distKm = latest.properties?.distance_km;
+    if (bearing == null || distKm == null) {
+      mostRecentEl.textContent = "NONE";
+      return;
+    }
+    const distMi = Math.round(distKm * 0.621371);
+    mostRecentEl.textContent = `${type} ${Math.round(bearing)}° ${distMi} mi`;
+  }
+
+  function updateCloseStrikes(features) {
+    if (!features || features.length === 0) {
+      closeStrikesData = { count: 0, strikes: [] };
+      return;
+    }
+    const strikes = [];
+    for (const f of features) {
+      const distKm = f.properties?.distance_km;
+      if (distKm == null || distKm > CLOSE_RADIUS_KM + CLOSE_RADIUS_KM_EPSILON) continue;
+      const coords = f.geometry?.coordinates;
+      if (!coords) continue;
+      strikes.push({
+        lon: coords[0],
+        lat: coords[1],
+        distance_km: distKm,
+        distance_mi: distKm * 0.621371,
+        bearing_deg: f.properties?.bearing_deg,
+        strike_type: f.properties?.strike_type || "—",
+        timestamp_utc: f.properties?.timestamp_utc
+      });
+    }
+    closeStrikesData = { count: strikes.length, strikes };
+    const now = Date.now();
+    const cutoff4h = now - CLOSE_4HR_MS;
+    for (const s of strikes) {
+      const key = `${s.timestamp_utc}|${s.lon}|${s.lat}`;
+      const t = new Date(s.timestamp_utc).getTime();
+      if (t >= cutoff4h && !closeStrikeStore.has(key)) closeStrikeStore.set(key, t);
+    }
+    for (const [key, t] of closeStrikeStore.entries()) {
+      if (t < cutoff4h) closeStrikeStore.delete(key);
+    }
+    if (strikes.length > 0) {
+      const latest = strikes.reduce((a, b) => (a.timestamp_utc || "") > (b.timestamp_utc || "") ? a : b);
+      const strikeAge = Date.now() - new Date(latest.timestamp_utc).getTime();
+      const isNewer = !lastCloseStrike || (latest.timestamp_utc > lastCloseStrike.timestamp_utc);
+      const currentExpired = lastCloseStrike && (Date.now() - closeStrikeDisplayStart > CLOSE_WINDOW_MS);
+      if (isNewer || (currentExpired && strikeAge <= CLOSE_WINDOW_MS)) {
+        lastCloseStrike = latest;
+        closeStrikeDisplayStart = Date.now();
+      }
+    }
+  }
+
+  function format12h(ts) {
+    if (!ts) return "—";
+    const d = new Date(ts);
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const s = d.getSeconds();
+    const ampm = h >= 12 ? "pm" : "am";
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}${ampm}`;
+  }
+
+  function formatSince(ms) {
+    const sec = Math.floor(ms / 1000);
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2,"0")}`;
+  }
+
+  function renderCloseDisplay() {
+    const now = Date.now();
+    const cutoff1m = now - 60000;
+    const cutoff4h = now - CLOSE_4HR_MS;
+    let closePerMin = 0;
+    let close4hr = 0;
+    for (const t of closeStrikeStore.values()) {
+      if (t >= cutoff1m) closePerMin++;
+      if (t >= cutoff4h) close4hr++;
+    }
+    if (closePerMinEl) closePerMinEl.textContent = closePerMin > 0 ? String(closePerMin) : "NONE";
+    if (close4hrEl) close4hrEl.textContent = close4hr > 0 ? String(close4hr) : "NONE";
+    const elapsed = now - closeStrikeDisplayStart;
+    if (!lastCloseStrike || elapsed > CLOSE_WINDOW_MS) {
+      if (closeLine2El) closeLine2El.textContent = "NONE";
+      if (closeLine3El) closeLine3El.textContent = "NONE";
+      closeRow2El?.classList.remove("close-alert", "close-flash", "close-yellow");
+      closeRow3El?.classList.remove("close-alert", "close-flash", "close-yellow");
+      closeRow4El?.classList.remove("close-alert", "close-flash", "close-yellow");
+      return;
+    }
+    const type = lastCloseStrike.strike_type || "—";
+    const brg = lastCloseStrike.bearing_deg != null ? Math.round(lastCloseStrike.bearing_deg) : "—";
+    const distMi = lastCloseStrike.distance_mi != null ? Math.round(lastCloseStrike.distance_mi) : "—";
+    if (closeLine2El) closeLine2El.textContent = `${type} ${brg}° ${distMi} mi`;
+    const strikeTime = new Date(lastCloseStrike.timestamp_utc).getTime();
+    const sinceMs = now - strikeTime;
+    if (closeLine3El) closeLine3El.textContent = `${format12h(lastCloseStrike.timestamp_utc)}  Since ${formatSince(sinceMs)}`;
+    closeRow2El?.classList.add("close-alert");
+    closeRow3El?.classList.add("close-alert");
+    closeRow4El?.classList.add("close-alert");
+    closeRow2El?.classList.remove("close-flash", "close-yellow");
+    closeRow3El?.classList.remove("close-flash", "close-yellow");
+    closeRow4El?.classList.remove("close-flash", "close-yellow");
+    if (elapsed < CLOSE_FLASH_MS) {
+      closeRow2El?.classList.add("close-flash");
+      closeRow3El?.classList.add("close-flash");
+      closeRow4El?.classList.add("close-flash");
+    } else if (elapsed > CLOSE_RED_MS) {
+      closeRow2El?.classList.add("close-yellow");
+      closeRow3El?.classList.add("close-yellow");
+      closeRow4El?.classList.add("close-yellow");
+    }
+  }
+
+  function updateStrikeCount(features) {
+    if (!strikeCountEl || !features) return;
+    const now = Date.now();
+    const cutoff = now - STRIKE_COUNT_WINDOW_MS;
+    for (const f of features) {
+      const dist = f.properties?.distance_km;
+      if (dist == null || dist > STRIKE_COUNT_RADIUS_KM) continue;
+      const coords = f.geometry?.coordinates;
+      const ts = f.properties?.timestamp_utc;
+      if (!coords || !ts) continue;
+      const t = new Date(ts).getTime();
+      if (t < cutoff) continue;
+      const key = `${ts}|${coords[0]}|${coords[1]}`;
+      if (!strikeCountStore.has(key)) strikeCountStore.set(key, t);
+    }
+    for (const [key, t] of strikeCountStore.entries()) {
+      if (t < cutoff) strikeCountStore.delete(key);
+    }
+    strikeCountEl.textContent = strikeCountStore.size > 0 ? String(strikeCountStore.size) : "NONE";
+  }
+
+  function updateStrikesPerMinute(features) {
+    if (!strikesPerMinEl || !features) return;
+    const now = Date.now();
+    const cutoff = now - 60000;
+    let count = 0;
+    for (const f of features) {
+      const dist = f.properties?.distance_km;
+      if (dist == null || dist > STRIKE_COUNT_RADIUS_KM) continue;
+      const ts = f.properties?.timestamp_utc;
+      if (!ts) continue;
+      const t = new Date(ts).getTime();
+      if (t >= cutoff) count++;
+    }
+    strikesPerMinEl.textContent = count > 0 ? String(count) : "NONE";
+  }
+
+  function updateDataBoxScale() {
+    const el = document.getElementById("upper-right");
+    if (!el) return;
+    const s = Math.min(1, window.innerWidth / 1200);
+    el.style.transform = "scale(" + s + ")";
+  }
+
+  function applyTransformedData(features) {
+    const src = map && map.getSource("lightning-points");
+    if (!src) return;
+    const transformed = transformFeaturesForFlash(features);
+    const zoom = map.getZoom();
+    const iScale = zoomIconScale(zoom);
+    const scaled = transformed.map(f => {
+      const p = f.properties || {};
+      const i = p.client_icon_size ?? 0;
+      return {
+        ...f,
+        properties: {
+          ...p,
+          client_icon_size: i > 0 ? i * iScale : 0
+        }
+      };
+    });
+    src.setData({ type: "FeatureCollection", features: scaled });
+  }
+
+  let refreshing = false;
+  async function refreshLayers() {
+    if (!map || !map.getSource) return;
+    const src = map.getSource("lightning-points");
+    if (!src) return;
+    if (refreshing) return;
+    refreshing = true;
+    const refreshBtn = document.getElementById("refresh");
+    if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = "…"; }
+    try {
+      const r = await fetch(POINTS_URL + "?t=" + Date.now(), { cache: "no-store" });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && Array.isArray(d.features)) {
+          let features = d.features;
+          lastRawFeatures = d.features;
+          if (countEl) countEl.textContent = String(d.features.length);
+          const computedAt = d.properties?.computed_at_utc;
+          const ts = d.features[0]?.properties?.timestamp_utc;
+          if (tsEl) tsEl.textContent = computedAt ? new Date(computedAt).toLocaleTimeString() : "—";
+          updateFreshness(d.properties?.computed_at_utc);
+          updateMostRecent(d.features);
+          updateCloseStrikes(d.features);
+          renderCloseDisplay();
+          updateStrikeCount(d.features);
+          updateStrikesPerMinute(d.features);
+          applyTransformedData(d.features);
+          flashDataInitialized = true;
+        }
+      }
+    } catch (_) {}
+    finally {
+      refreshing = false;
+      if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = "↻"; }
+    }
+  }
+
+  mapboxgl.accessToken = MAPBOX.accessToken;
+  const map = new mapboxgl.Map({
+    container: "map",
+    style: MAPBOX.style,
+    center: CENTER,
+    zoom: 7
+  });
+
+  map.on("load", async () => {
+    map.dragPan.disable();
+    map.scrollZoom.disable();
+    map.doubleClickZoom.disable();
+    map.touchZoomRotate.disable();
+    map.boxZoom.disable();
+    map.keyboard.disable();
+    const loadImg = (name) => new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = new URL(name, window.location.href).href;
+    });
+    const [starImg, boltImg] = await Promise.all([loadImg("station-star.svg"), loadImg("lightning-bolt.svg")]);
+    map.addImage("station-star", starImg, { pixelRatio: 2 });
+    map.addImage("lightning-bolt", boltImg, { pixelRatio: 2 });
+    map.resize();
+    const c = map.getContainer();
+    const w = (embedW > 0 && embedH > 0) ? embedW : c.clientWidth;
+    const h = (embedW > 0 && embedH > 0) ? embedH : c.clientHeight;
+    const bounds = boundsFor135MiEW(CENTER[0], CENTER[1], w, h);
+    map.fitBounds(bounds, { padding: 0, duration: 0 });
+    if (embedW > 0 && embedH > 0) {
+      requestAnimationFrame(() => {
+        map.fitBounds(boundsFor135MiEW(CENTER[0], CENTER[1], embedW, embedH), { padding: 0, duration: 0 });
+      });
+    }
+    map.once("idle", () => {
+      const z = map.getZoom();
+      map.setMinZoom(z);
+      map.setMaxZoom(z);
+      updateDataBoxScale();
+    });
+    map.addSource("domain", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [domainCircle(CENTER[0], CENTER[1], FIXED_RADIUS_MI)] }
+    });
+    map.addLayer({
+      id: "domain-boundary",
+      type: "line",
+      source: "domain",
+      paint: { "line-color": "#64748b", "line-width": 1, "line-dasharray": [2, 2], "line-opacity": 0.6 }
+    });
+    const ringsData = await fetch(RINGS_URL + "?t=" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (ringsData) {
+      map.addSource("lightning-range-rings", { type: "geojson", data: ringsData });
+      map.addLayer({
+        id: "lightning-range-rings-line",
+        type: "line",
+        source: "lightning-range-rings",
+        paint: {
+          "line-color": ["coalesce", ["get", "color"], "#ffffff"],
+          "line-width": 2,
+          "line-opacity": 0.8
+        }
+      });
+      map.addLayer({
+        id: "lightning-range-rings-labels",
+        type: "symbol",
+        source: "lightning-range-rings",
+        filter: ["has", "label"],
+        layout: {
+          "text-field": ["get", "label"],
+          "text-size": 12,
+          "text-anchor": "center",
+          "text-allow-overlap": false
+        },
+        paint: {
+          "text-color": ["coalesce", ["get", "color"], "#ffffff"],
+          "text-halo-color": "#000000",
+          "text-halo-width": 2
+        }
+      });
+    }
+    map.addSource("station", {
+      type: "geojson",
+      data: { type: "Feature", geometry: { type: "Point", coordinates: CENTER }, properties: {} }
+    });
+    map.addImage("station-star", starImg, { pixelRatio: 2 });
+    map.addLayer({
+      id: "station-dot",
+      type: "symbol",
+      source: "station",
+      layout: {
+        "icon-image": "station-star",
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 3, 0.12, 5, 0.2, 7, 0.35, 14, 0.65],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      },
+      paint: {
+        "icon-color": "#22c55e"
+      }
+    });
+    map.addSource("lightning-points", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    map.addLayer({
+      id: "lightning-all",
+      type: "circle",
+      source: "lightning-points",
+      filter: ["!=", ["get", "client_render_type"], "bolt"],
+      paint: {
+        "circle-radius": ["match", ["get", "strike_type"], "CG", 6, 5],
+        "circle-color": ["coalesce", ["get", "client_circle_color"], ["match", ["get", "strike_type"], "IC", "#38bdf8", "#facc15"]],
+        "circle-opacity": ["coalesce", ["get", "client_circle_opacity"], ["case", [">=", ["coalesce", ["get", "age_seconds"], 0], 300], 0.2, 0.9]],
+        "circle-stroke-width": 1,
+        "circle-stroke-color": "#fff",
+        "circle-stroke-opacity": ["coalesce", ["get", "client_circle_opacity"], ["case", [">=", ["coalesce", ["get", "age_seconds"], 0], 300], 0.2, 1]]
+      }
+    });
+    map.addLayer({
+      id: "lightning-bolt",
+      type: "symbol",
+      source: "lightning-points",
+      filter: ["==", ["get", "client_render_type"], "bolt"],
+      layout: {
+        "icon-image": "lightning-bolt",
+        "icon-size": ["coalesce", ["get", "client_icon_size"], 0.55],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      },
+      paint: {
+        "icon-color": ["coalesce", ["get", "client_icon_color"], "#ffffff"],
+        "icon-opacity": ["coalesce", ["get", "client_icon_opacity"], 1],
+        "icon-halo-color": "#000000",
+        "icon-halo-width": 1
+      }
+    });
+    await refreshLayers();
+    const refreshBtn = document.getElementById("refresh");
+    if (refreshBtn) refreshBtn.addEventListener("click", () => refreshLayers());
+  });
+
+  function refresh() { refreshLayers(); }
+  document.getElementById("fullscreen").onclick = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  };
+  window.addEventListener("resize", () => {
+    map.resize();
+    const c = map.getContainer();
+    const b = boundsFor135MiEW(CENTER[0], CENTER[1], c.clientWidth, c.clientHeight);
+    map.fitBounds(b, { padding: 0, duration: 0 });
+    const z = map.getZoom();
+    map.setMinZoom(z);
+    map.setMaxZoom(z);
+    updateDataBoxScale();
+  });
+  document.addEventListener("fullscreenchange", () => { map.resize(); updateDataBoxScale(); });
+  updateDataBoxScale();
+  setInterval(refresh, POLL_MS);
+  setInterval(() => updateFreshness(), 2000);
+  setInterval(() => {
+    renderCloseDisplay();
+    if (lastRawFeatures.length > 0) updateMostRecent(lastRawFeatures);
+  }, 500);
+  setInterval(() => {
+    if (lastRawFeatures.length > 0) applyTransformedData(lastRawFeatures);
+  }, 100);
+  setTimeout(refresh, 2000);
+})();
+</script>
+</body>
+</html>

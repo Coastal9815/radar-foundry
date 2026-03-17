@@ -1,0 +1,9 @@
+{
+  "sites": ["KCLX", "KJAX"],
+  "max_concurrent": 2,
+  "site_timeout_sec": 180,
+  "stagger_sec": 5,
+  "remote_base": "/home/scott/wx-data/served",
+  "remote_host": "wx-i9",
+  "remote_user": "scott"
+}

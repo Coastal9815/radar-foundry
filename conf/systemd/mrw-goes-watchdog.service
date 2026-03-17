@@ -1,0 +1,13 @@
+[Unit]
+Description=GOES satellite watchdog (backup if cron fails)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/scott/wx/radar-foundry/bin/goes_watchdog_wxi9.sh
+WorkingDirectory=/home/scott/wx/radar-foundry
+StandardOutput=append:/tmp/goes_watchdog.log
+StandardError=append:/tmp/goes_watchdog.log
+
+[Install]
+WantedBy=default.target

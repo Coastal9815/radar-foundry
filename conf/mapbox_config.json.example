@@ -1,0 +1,4 @@
+{
+  "accessToken": "YOUR_MAPBOX_PUBLIC_TOKEN",
+  "style": "mapbox://styles/YOUR_USERNAME/YOUR_STYLE_ID"
+}

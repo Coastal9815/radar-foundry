@@ -1,0 +1,374 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MRW KJAX Player</title>
+  <style>
+    body { margin:0; background:#000; color:#ddd; font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif; }
+    .wrap { display:grid; place-items:center; min-height:100vh; padding:16px; box-sizing:border-box; }
+    .panel { width:min(96vw,1100px); }
+    .top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 12px 0; flex-wrap:wrap; }
+    .btns { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { background:#222; color:#ddd; border:1px solid #444; padding:6px 10px; border-radius:8px; cursor:pointer; }
+    button:hover { background:#2a2a2a; }
+    select { background:#222; color:#ddd; border:1px solid #444; padding:6px 10px; border-radius:8px; cursor:pointer; }
+    input[type="range"] { width:220px; }
+    .meta { font-size:12px; opacity:.9; }
+    .top { position:relative; }
+    .top .title { position:absolute; left:42%; font-size:18px; font-weight:600; pointer-events:none; }
+    .stage {
+      position:relative;
+      width:100%;
+      aspect-ratio:1 / 1;
+      border:1px solid #222;
+      border-radius:12px;
+      overflow:hidden;
+      background:#000;
+      cursor:grab;
+      user-select:none;
+    }
+    .stage:active { cursor:grabbing; }
+    .view {
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      transform-origin:0 0;
+      will-change:transform;
+      touch-action:none;
+      pointer-events:auto;
+      cursor:grab;
+    }
+    .view:active { cursor:grabbing; }
+    .view img {
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      object-position:0 0;
+      image-rendering:crisp-edges;
+      image-rendering:pixelated;
+      pointer-events:none;
+      user-select:none;
+    }
+    #base { z-index:1; image-rendering:auto; }
+    #radar { z-index:2; }
+    .location-dot {
+      position:absolute; z-index:3;
+      width:7px; height:7px;
+      background:#3b82f6;
+      border-radius:50%;
+      transform:translate(-50%,-50%);
+      pointer-events:none; box-shadow:0 0 4px rgba(0,0,0,.5);
+    }
+    .stamp { font-variant-numeric: tabular-nums; }
+    .frameStamp {
+      position:absolute; bottom:12px; right:12px; z-index:3;
+      background:rgba(0,0,0,.7); color:#fff; padding:6px 10px;
+      font-size:16px; font-weight:600; font-variant-numeric:tabular-nums;
+      border-radius:6px; pointer-events:none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <div class="top">
+        <div class="btns" style="flex-shrink:0">
+          <button id="play">Play</button>
+          <button id="stepBack">◀</button>
+          <button id="stepFwd">▶</button>
+          <input id="speed" type="range" min="50" max="500" value="160" />
+          <div class="meta">Speed: <span id="speedVal">160</span> ms</div>
+          <select id="frameLimit" title="Frames in loop (most recent)">
+            <option value="6">6</option>
+            <option value="12">12</option>
+            <option value="24">24</option>
+            <option value="36">36</option>
+            <option value="48">48</option>
+            <option value="72">72</option>
+          </select>
+          <button id="zoomOut" title="Zoom out">−</button>
+          <button id="zoomIn" title="Zoom in">+</button>
+          <button id="refresh" title="Refresh to latest">↻</button>
+          <button id="fullscreen" title="Fullscreen">⛶</button>
+        </div>
+        <div class="title">Jacksonville</div>
+        <div class="meta" style="flex-shrink:0">
+          Frame: <span id="idx">0</span>/<span id="count">0</span>
+          · <span class="stamp" id="ts">—</span>
+        </div>
+      </div>
+
+      <div class="stage" id="stage">
+        <div class="view" id="view">
+          <img id="base" src="/basemaps/basemap_MRWcenter_1600.svg?v=260" alt="MRW basemap">
+          <img id="radar" alt="KJAX radar frame">
+          <div class="location-dot" id="locationDot"></div>
+        </div>
+        <div id="frameStamp" class="frameStamp">—</div>
+      </div>
+
+      <div class="meta" style="margin-top:10px; line-height:1.4;">
+        Source: <code id="sourceUrl">—</code>
+      </div>
+    </div>
+  </div>
+
+<script>
+(async function () {
+  const SITE = "KJAX";
+  const WX_SERVE = "http://192.168.2.2:8080";
+  const BASE_URL = (window.location.origin && window.location.origin !== "null" && !window.location.origin.startsWith("file"))
+    ? window.location.origin
+    : WX_SERVE;
+  let manifestUrl = `${BASE_URL}/${SITE}/manifest.json`;
+  let frameBase = `${BASE_URL}/${SITE}/`;
+  const radar = document.getElementById("radar");
+  const view = document.getElementById("view");
+  const stage = document.getElementById("stage");
+  const playBtn = document.getElementById("play");
+  const backBtn = document.getElementById("stepBack");
+  const fwdBtn  = document.getElementById("stepFwd");
+  const speed   = document.getElementById("speed");
+  const speedVal= document.getElementById("speedVal");
+  const idxEl   = document.getElementById("idx");
+  const countEl = document.getElementById("count");
+  const tsEl    = document.getElementById("ts");
+  const frameStampEl = document.getElementById("frameStamp");
+
+  const FRAME_LIMIT_KEY = "mrw_frame_limit_kjax";
+  const FRAME_LIMIT_OPTS = [6, 12, 24, 36, 48, 72];
+  let allFrames = [];
+  let frames = [];
+  let i = 0;
+  let timer = null;
+  let frameLimit = parseInt(localStorage.getItem(FRAME_LIMIT_KEY) || "72", 10);
+  if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 72;
+  const POLL_MS = 15000;
+
+  const frameLimitEl = document.getElementById("frameLimit");
+  frameLimitEl.value = String(frameLimit);
+  frameLimitEl.onchange = () => {
+    frameLimit = parseInt(frameLimitEl.value, 10);
+    localStorage.setItem(FRAME_LIMIT_KEY, String(frameLimit));
+    frames = allFrames.slice(-frameLimit);
+    countEl.textContent = String(frames.length);
+    if (frames.length && i >= frames.length) i = frames.length - 1;
+    if (frames.length) setFrame(i);
+    if (timer) { pause(); play(); }
+  };
+
+  let scale = 1, panX = 0, panY = 0;
+  const MIN_SCALE = 0.5, MAX_SCALE = 5;
+  let dragging = false;
+  let lastX = 0, lastY = 0;
+
+  function applyTransform() {
+    view.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
+  }
+
+  function onWheel(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = stage.getBoundingClientRect();
+    const mx = e.clientX - r.left;
+    const my = e.clientY - r.top;
+    const delta = -Math.sign(e.deltaY) || 1;
+    const k = delta > 0 ? 1.15 : 1 / 1.15;
+    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * k));
+    panX = mx - (mx - panX) * (newScale / scale);
+    panY = my - (my - panY) * (newScale / scale);
+    scale = newScale;
+    applyTransform();
+  }
+  stage.addEventListener("wheel", onWheel, { passive: false });
+  view.addEventListener("wheel", onWheel, { passive: false });
+
+  function onMouseDown(e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  }
+  stage.addEventListener("mousedown", onMouseDown);
+  view.addEventListener("mousedown", onMouseDown);
+
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    panX += e.clientX - lastX;
+    panY += e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    applyTransform();
+  });
+  window.addEventListener("mouseup", () => { dragging = false; });
+  window.addEventListener("mouseleave", () => { dragging = false; });
+
+  async function loadManifest() {
+    const tryFetch = async (base) => {
+      const url = `${base}/${SITE}/manifest.json`;
+      const resp = await fetch(url, { cache: "no-store" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const mf = await resp.json();
+      if (!mf.frames || mf.frames.length === 0) throw new Error("empty frames");
+      return { mf, base };
+    };
+    try {
+      let mf, base = BASE_URL;
+      try {
+        ({ mf, base } = await tryFetch(BASE_URL));
+      } catch (_) {
+        ({ mf, base } = await tryFetch(WX_SERVE));
+        manifestUrl = `${base}/${SITE}/manifest.json`;
+        frameBase = `${base}/${SITE}/`;
+      }
+      allFrames = mf.frames || [];
+      frames = allFrames.slice(-frameLimit);
+      countEl.textContent = String(frames.length);
+      document.getElementById("sourceUrl").textContent = manifestUrl;
+      i = frames.length ? frames.length - 1 : 0;
+      if (frames.length) setFrame(i);
+    } catch (e) {
+      const msg = `Failed to load manifest: ${e.message}. Try ${WX_SERVE}/player/kjax/`;
+      console.error(msg);
+      document.getElementById("sourceUrl").textContent = msg;
+      document.getElementById("sourceUrl").style.color = "#e55";
+    }
+  }
+
+  async function refreshManifest() {
+    try {
+      const resp = await fetch(manifestUrl + "?t=" + Date.now(), { cache: "no-store" });
+      if (!resp.ok) return;
+      const mf = await resp.json();
+      const newAllFrames = mf.frames || [];
+      if (newAllFrames.length === 0) return;
+      const ourLast = frames.length ? frames[frames.length - 1] : null;
+      const serverLast = newAllFrames[newAllFrames.length - 1];
+      const hasNewFrame = ourLast !== serverLast;
+      const currentFrame = frames[i];
+      allFrames = newAllFrames;
+      frames = allFrames.slice(-frameLimit);
+      countEl.textContent = String(frames.length);
+      if (timer) {
+        i = Math.min(i, frames.length - 1);
+        setFrame(i);
+      } else {
+        if (hasNewFrame) {
+          i = frames.length - 1;
+          setFrame(i);
+        } else {
+          const idx = frames.indexOf(currentFrame);
+          i = idx >= 0 ? idx : frames.length - 1;
+          if (idx < 0) setFrame(i);
+        }
+      }
+    } catch (_) {}
+  }
+
+  function setFrame(n) {
+    if (!frames.length) return;
+    i = Math.max(0, Math.min(n, frames.length - 1));
+    const name = frames[i];
+    radar.src = frameBase + name + "?v=" + Date.now();
+    idxEl.textContent = String(i + 1);
+    countEl.textContent = String(frames.length);
+    const ts = name.replace(".png", ""); const year=ts.slice(0,4); const month=ts.slice(4,6); const day=ts.slice(6,8); const hour=ts.slice(9,11); const min=ts.slice(11,13); const d=new Date(Date.UTC(year,month-1,day,hour,min)); const timeStr=d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit",hour12:true}); tsEl.textContent=timeStr; frameStampEl.textContent=timeStr;
+  }
+
+  const LOOP_HOLD_MS = 1000;
+
+  function advance() {
+    if (i >= frames.length - 1) {
+      clearInterval(timer);
+      timer = null;
+      setTimeout(() => {
+        setFrame(0);
+        timer = setInterval(advance, Number(speed.value));
+      }, LOOP_HOLD_MS);
+    } else {
+      setFrame(i + 1);
+    }
+  }
+
+  function play() {
+    if (timer || !frames.length) return;
+    playBtn.textContent = "Pause";
+    timer = setInterval(advance, Number(speed.value));
+  }
+
+  function pause() {
+    if (!timer) return;
+    clearInterval(timer);
+    timer = null;
+    playBtn.textContent = "Play";
+  }
+
+  playBtn.onclick = () => timer ? pause() : play();
+  backBtn.onclick = () => { pause(); if (frames.length) setFrame((i - 1 + frames.length) % frames.length); };
+  fwdBtn.onclick  = () => { pause(); if (frames.length) setFrame((i + 1) % frames.length); };
+  speed.oninput = () => {
+    speedVal.textContent = speed.value;
+    if (timer) { pause(); play(); }
+  };
+
+  speedVal.textContent = speed.value;
+
+  (function placeLocationDot() {
+    const LOC_LAT = 31.919114, LOC_LON = -81.075932;
+    const CENTER_LAT = 31.919173, CENTER_LON = -81.075938, HALF_M = 483000;
+    const to3857 = (lon, lat) => {
+      const x = lon * 20037508.34 / 180;
+      const y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) * (20037508.34 / Math.PI);
+      return [x, y];
+    };
+    const [cx, cy] = to3857(CENTER_LON, CENTER_LAT);
+    const [ux, uy] = to3857(LOC_LON, LOC_LAT);
+    const xmin = cx - HALF_M, xmax = cx + HALF_M, ymin = cy - HALF_M, ymax = cy + HALF_M;
+    const xPct = ((ux - xmin) / (xmax - xmin)) * 100;
+    const yPct = ((ymax - uy) / (ymax - ymin)) * 100;
+    const dot = document.getElementById("locationDot");
+    dot.style.left = xPct + "%";
+    dot.style.top = yPct + "%";
+  })();
+
+  document.getElementById("zoomOut").onclick = () => {
+    const r = stage.getBoundingClientRect();
+    const mx = r.width / 2; const my = r.height / 2;
+    const k = 1 / 1.3;
+    const newScale = Math.max(MIN_SCALE, scale * k);
+    panX = mx - (mx - panX) * (newScale / scale);
+    panY = my - (my - panY) * (newScale / scale);
+    scale = newScale;
+    applyTransform();
+  };
+  document.getElementById("zoomIn").onclick = () => {
+    const r = stage.getBoundingClientRect();
+    const mx = r.width / 2; const my = r.height / 2;
+    const k = 1.3;
+    const newScale = Math.min(MAX_SCALE, scale * k);
+    panX = mx - (mx - panX) * (newScale / scale);
+    panY = my - (my - panY) * (newScale / scale);
+    scale = newScale;
+    applyTransform();
+  };
+  document.getElementById("refresh").onclick = () => { refreshManifest(); };
+  document.getElementById("fullscreen").onclick = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  await loadManifest();
+  setInterval(refreshManifest, POLL_MS);
+  setTimeout(refreshManifest, 2000);
+})();
+</script>
+</body>
+</html>

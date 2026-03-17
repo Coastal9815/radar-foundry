@@ -1,0 +1,405 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MRW MRMS Composite Reflectivity</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.js"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; background:#000; color:#ddd; font-family:-apple-system,system-ui,sans-serif; overflow:hidden; }
+    #map { position:fixed; inset:0; width:100%; height:100%; }
+    .top {
+      position:fixed; top:0; left:0; right:0; z-index:10;
+      display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px; flex-wrap:wrap;
+      background:rgba(0,0,0,.75); backdrop-filter:blur(4px);
+    }
+    .btns { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button, select { background:#222; color:#ddd; border:1px solid #444; padding:6px 10px; border-radius:8px; cursor:pointer; }
+    button:hover { background:#2a2a2a; }
+    input[type="range"] { width:180px; }
+    .meta { font-size:12px; opacity:.9; }
+    .top .title { flex:1; text-align:right; font-size:18px; font-weight:600; pointer-events:none; padding-right:12px; }
+    .regions {
+      display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+    }
+    .regions .thumb { display:flex; flex-direction:column; align-items:center; cursor:pointer; }
+    .regions img {
+      width:80px; height:56px; object-fit:cover; border-radius:6px;
+      border:2px solid transparent; opacity:.85;
+    }
+    .regions .thumb:hover img { opacity:1; }
+    .regions .thumb.active img { border-color:#7dd3fc; opacity:1; }
+    .regions .thumb-label { font-size:10px; color:#999; margin-top:2px; max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .frameStamp {
+      position:fixed; bottom:12px; right:12px; z-index:10;
+      background:rgba(0,0,0,.7); color:#fff; padding:6px 10px;
+      font-size:14px; font-weight:600; font-variant-numeric:tabular-nums;
+      border-radius:6px; pointer-events:none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="top">
+    <div class="btns" style="flex-shrink:0">
+      <div class="regions" id="regions"></div>
+      <button id="play">Play</button>
+      <button id="stepBack">◀</button>
+      <button id="stepFwd">▶</button>
+      <input id="speed" type="range" min="50" max="500" value="160" />
+      <span class="meta">Speed: <span id="speedVal">160</span> ms</span>
+      <select id="frameLimit" title="Frames in loop">
+        <option value="6">6</option>
+        <option value="12">12</option>
+        <option value="24">24</option>
+        <option value="36">36</option>
+      </select>
+      <input id="opacity" type="range" min="30" max="100" value="52" title="Radar opacity" style="width:80px" />
+      <span class="meta">Opacity: <span id="opacityVal">52</span>%</span>
+      <button id="refresh" title="Refresh">↻</button>
+      <button id="fullscreen" title="Fullscreen">⛶</button>
+    </div>
+    <div class="title" id="titleEl">MRMS — Loading…</div>
+    <div class="meta" style="flex-shrink:0">
+      Frame: <span id="idx">0</span>/<span id="count">0</span>
+      · <span id="ts">—</span>
+    </div>
+  </div>
+  <div id="frameStamp" class="frameStamp">—</div>
+
+<script>
+(async function () {
+  const MAPBOX = {
+    accessToken: "YOUR_MAPBOX_PUBLIC_TOKEN",
+    style: "mapbox://styles/scott3294/cmlg0hi32000i01qw7tik8xdm"
+  };
+  const REGIONS = [
+    { id: "eastern_us", label: "Eastern US", center: [-83.329298, 31.966225], zoom: 5.49, bearing: 0, pitch: 0, thumbBounds: [-110, 22, -62, 48] },
+    { id: "florida_south", label: "Florida South", center: [-82.175433, 28.922021], zoom: 6.09, bearing: 0, pitch: 0, thumbBounds: [-103, 17, -62, 40] },
+    { id: "southeast", label: "Southeast", center: [-82.741892, 32.028122], zoom: 6.09, bearing: 0, pitch: 0, thumbBounds: [-103, 21, -62, 43] },
+    { id: "florida", label: "Florida", center: [-81.632441, 27.624126], zoom: 6.66, bearing: 0, pitch: 0, thumbBounds: [-95, 21, -68, 35] },
+    { id: "georgia", label: "Georgia", center: [-82.124984, 32.279731], zoom: 6.93, bearing: 0, pitch: 0, thumbBounds: [-93, 26, -71, 38] },
+    { id: "savannah_250", label: "Savannah 250", center: [-81.177204, 31.831369], zoom: 7.42, bearing: 0, pitch: 0, thumbBounds: [-89, 27, -73, 36] }
+  ];
+  const WX_SERVE = "http://192.168.2.2:8080";
+  const BASE_URL = (window.location.origin && window.location.origin !== "null" && !window.location.origin.startsWith("file"))
+    ? window.location.origin : WX_SERVE;
+  const SITE = "mrms";
+  function urlsForRegion(rid) {
+    const base = (typeof location !== "undefined" && location.origin) ? location.origin : BASE_URL;
+    return {
+      manifestUrl: `${base}/${SITE}/${rid}/manifest.json`,
+      frameBase: `${base}/${SITE}/${rid}/`,
+      boundsUrl: `${base}/${SITE}/${rid}/mrms_bounds.json`
+    };
+  }
+  let manifestUrl = urlsForRegion("eastern_us").manifestUrl;
+  let frameBase = urlsForRegion("eastern_us").frameBase;
+  let boundsUrl = urlsForRegion("eastern_us").boundsUrl;
+
+  const params = new URLSearchParams(location.search);
+  const FRAME_LIMIT_KEY = "mrw_frame_limit_mrms";
+  const OPACITY_KEY = "mrw_mrms_opacity";
+  const FRAME_LIMIT_OPTS = [6, 12, 24, 36];
+  let allFrames = [], frames = [], i = 0, timer = null;
+  let frameLimit = parseInt(params.get("frameLimit") || localStorage.getItem(FRAME_LIMIT_KEY) || "36", 10);
+  if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 36;
+  let radarOpacity = parseInt(params.get("opacity") || localStorage.getItem(OPACITY_KEY) || "52", 10);
+  radarOpacity = Math.max(30, Math.min(100, radarOpacity));
+  const regionParam = params.get("region") || "eastern_us";
+  const autoplay = params.has("autoplay") || params.has("play");
+  const POLL_MS = 15000;
+  const ALERT_POLL_MS = 120000;
+
+  let overlayCoords = null;
+
+  async function loadAlerts() {
+    try {
+      const resp = await fetch(BASE_URL + "/alerts.json?t=" + Date.now(), { cache: "no-store" });
+      if (!resp.ok) return null;
+      return await resp.json();
+    } catch (_) { return null; }
+  }
+
+  function addAlertLayers(data) {
+    if (!data || !map || !map.getSource) return;
+    const svr = data.svr || { type: "FeatureCollection", features: [] };
+    const tor = data.tor || { type: "FeatureCollection", features: [] };
+    const torWatch = data.tor_watch || { type: "FeatureCollection", features: [] };
+    const svrWatch = data.svr_watch || { type: "FeatureCollection", features: [] };
+    const sws = data.sws || { type: "FeatureCollection", features: [] };
+    if (!map.getSource("alerts-tor-watch")) {
+      map.addSource("alerts-tor-watch", { type: "geojson", data: torWatch });
+      map.addLayer({ id: "alerts-tor-watch-fill", type: "fill", source: "alerts-tor-watch", paint: { "fill-color": "#ef4444", "fill-opacity": 0.2 } });
+    } else { map.getSource("alerts-tor-watch").setData(torWatch); }
+    if (!map.getSource("alerts-svr-watch")) {
+      map.addSource("alerts-svr-watch", { type: "geojson", data: svrWatch });
+      map.addLayer({ id: "alerts-svr-watch-fill", type: "fill", source: "alerts-svr-watch", paint: { "fill-color": "#facc15", "fill-opacity": 0.2 } });
+    } else { map.getSource("alerts-svr-watch").setData(svrWatch); }
+    if (!map.getSource("alerts-svr")) {
+      map.addSource("alerts-svr", { type: "geojson", data: svr });
+      map.addLayer({ id: "alerts-svr-line", type: "line", source: "alerts-svr", paint: { "line-color": "#facc15", "line-width": 2 } });
+    } else { map.getSource("alerts-svr").setData(svr); }
+    if (!map.getSource("alerts-tor")) {
+      map.addSource("alerts-tor", { type: "geojson", data: tor });
+      map.addLayer({ id: "alerts-tor-line", type: "line", source: "alerts-tor", paint: { "line-color": "#ef4444", "line-width": 2 } });
+    } else { map.getSource("alerts-tor").setData(tor); }
+    if (!map.getSource("alerts-sws")) {
+      map.addSource("alerts-sws", { type: "geojson", data: sws });
+      map.addLayer({ id: "alerts-sws-line", type: "line", source: "alerts-sws", paint: { "line-color": "#f97316", "line-width": 1.5 } });
+    } else { map.getSource("alerts-sws").setData(sws); }
+  }
+  const initialRegion = REGIONS.find(r => r.id === regionParam) || REGIONS[0];
+  let currentRegion = initialRegion;
+
+  function staticThumbUrl(region) {
+    if (region.id === "eastern_us") return "thumbs/eastern_us.png";
+    if (region.id === "florida_south") return "thumbs/florida_south.png";
+    if (region.id === "southeast") return "thumbs/southeast.png";
+    if (region.id === "florida") return "thumbs/florida.png";
+    if (region.id === "georgia") return "thumbs/georgia.png";
+    if (region.id === "savannah_250") return "thumbs/savannah_250.png";
+    const [minLon, minLat, maxLon, maxLat] = region.thumbBounds || region.bounds || [];
+    if (minLon != null && minLat != null && maxLon != null && maxLat != null) {
+      const bbox = `[${minLon},${minLat},${maxLon},${maxLat}]`;
+      return `https://api.mapbox.com/styles/v1/scott3294/cmlg0hi32000i01qw7tik8xdm/static/${bbox}/80x56@2x?access_token=${MAPBOX.accessToken}`;
+    }
+    const [lon, lat] = region.center;
+    const z = region.zoom || 5;
+    return `https://api.mapbox.com/styles/v1/scott3294/cmlg0hi32000i01qw7tik8xdm/static/${lon},${lat},${z}/80x56@2x?access_token=${MAPBOX.accessToken}`;
+  }
+
+  const frameLimitEl = document.getElementById("frameLimit");
+  const countEl = document.getElementById("count");
+  const idxEl = document.getElementById("idx");
+  const tsEl = document.getElementById("ts");
+  const frameStampEl = document.getElementById("frameStamp");
+  frameLimitEl.value = String(frameLimit);
+  frameLimitEl.onchange = () => {
+    frameLimit = parseInt(frameLimitEl.value, 10);
+    localStorage.setItem(FRAME_LIMIT_KEY, String(frameLimit));
+    frames = allFrames.slice(-frameLimit);
+    countEl.textContent = frames.length;
+    if (frames.length && i >= frames.length) i = frames.length - 1;
+    if (frames.length) setFrame(i);
+    if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); }
+  };
+
+  function setFrame(n) {
+    if (!frames.length) return;
+    i = Math.max(0, Math.min(n, frames.length - 1));
+    const name = frames[i];
+    const url = frameBase + name + "?v=" + Date.now();
+    idxEl.textContent = i + 1;
+    countEl.textContent = frames.length;
+    const ts = name.replace(".png", "");
+    const timeStr = new Date(Date.UTC(parseInt(ts.slice(0,4)), parseInt(ts.slice(4,6))-1, parseInt(ts.slice(6,8)), parseInt(ts.slice(9,11)), parseInt(ts.slice(11,13)))).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",hour12:true});
+    tsEl.textContent = timeStr;
+    frameStampEl.textContent = timeStr;
+    const src = map.getSource("mrms");
+    if (src) src.updateImage({ url: url });
+  }
+
+  const LOOP_HOLD_MS = 1000;
+  function advance() {
+    if (i >= frames.length - 1) {
+      clearInterval(timer);
+      timer = null;
+      setTimeout(() => {
+        setFrame(0);
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }, LOOP_HOLD_MS);
+    } else {
+      setFrame(i + 1);
+    }
+  }
+
+  async function loadManifestForRegion(rid) {
+    const urls = urlsForRegion(rid);
+    let resp = await fetch(urls.manifestUrl, { cache: "no-store" });
+    let base = (typeof location !== "undefined" && location.origin) ? location.origin : WX_SERVE;
+    if (!resp.ok) {
+      resp = await fetch(`/${SITE}/${rid}/manifest.json`, { cache: "no-store" });
+      base = location.origin || WX_SERVE;
+    }
+    if (!resp.ok) return false;
+    const mf = await resp.json();
+    if (!mf.frames || mf.frames.length === 0) return false;
+    manifestUrl = `${base}/${SITE}/${rid}/manifest.json`;
+    frameBase = `${base}/${SITE}/${rid}/`;
+    boundsUrl = `${base}/${SITE}/${rid}/mrms_bounds.json`;
+    allFrames = mf.frames || [];
+    frames = allFrames.slice(-frameLimit);
+    countEl.textContent = frames.length;
+    i = frames.length ? frames.length - 1 : 0;
+    return true;
+  }
+
+  async function loadBounds() {
+    try {
+      const resp = await fetch(boundsUrl + "?t=" + Date.now(), { cache: "no-store" });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const c = data.coordinates;
+      if (c && c.length === 4) {
+        const [sw, se, ne, nw] = c;
+        return [nw, ne, se, sw];
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  async function switchRegion(r) {
+    currentRegion = r;
+    const ok = await loadManifestForRegion(r.id);
+    overlayCoords = await loadBounds();
+    if (!ok || !overlayCoords) return;
+    map.flyTo({ center: r.center, zoom: r.zoom, bearing: r.bearing || 0, pitch: r.pitch || 0, duration: 500 });
+    const src = map.getSource("mrms");
+    if (src && frames.length) {
+      src.updateImage({ url: frameBase + frames[i] + "?v=" + Date.now(), coordinates: overlayCoords });
+    } else if (map.getLayer("mrms-layer")) {
+      map.removeLayer("mrms-layer");
+      map.removeSource("mrms");
+    }
+    if (frames.length && overlayCoords) {
+      if (!map.getSource("mrms")) {
+        map.addSource("mrms", { type: "image", url: frameBase + frames[i] + "?v=" + Date.now(), coordinates: overlayCoords });
+        map.addLayer({ id: "mrms-layer", type: "raster", source: "mrms", paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 } });
+      }
+      setFrame(i);
+    }
+  }
+
+  mapboxgl.accessToken = MAPBOX.accessToken;
+  const map = new mapboxgl.Map({
+    container: "map",
+    style: MAPBOX.style,
+    center: currentRegion.center,
+    zoom: currentRegion.zoom,
+    bearing: currentRegion.bearing || 0,
+    pitch: currentRegion.pitch || 0,
+    minZoom: 4,
+    maxZoom: 14
+  });
+
+  map.on("load", async () => {
+    map.resize();
+    const titleEl = document.getElementById("titleEl");
+    if (titleEl) titleEl.textContent = "MRMS — Loading…";
+    REGIONS.forEach((r) => {
+      const wrap = document.createElement("div");
+      wrap.className = "thumb" + (r.id === initialRegion.id ? " active" : "");
+      const img = document.createElement("img");
+      img.src = staticThumbUrl(r);
+      img.alt = r.label;
+      img.title = r.label;
+      const lbl = document.createElement("span");
+      lbl.className = "thumb-label";
+      lbl.textContent = r.label;
+      wrap.onclick = () => {
+        document.querySelectorAll(".regions .thumb").forEach(el => el.classList.remove("active"));
+        wrap.classList.add("active");
+        switchRegion(r);
+      };
+      wrap.appendChild(img);
+      wrap.appendChild(lbl);
+      document.getElementById("regions").appendChild(wrap);
+    });
+    let ok = false;
+    try {
+      ok = await loadManifestForRegion(initialRegion.id);
+      overlayCoords = await loadBounds();
+    } catch (e) { console.error("MRMS load error:", e); }
+    if (titleEl) titleEl.textContent = ok ? "MRMS Composite Reflectivity" : "MRMS — No frames (tap Refresh)";
+    if (!ok) { countEl.textContent = "0"; idxEl.textContent = "0"; }
+    if (frames.length && overlayCoords) {
+      map.addSource("mrms", {
+        type: "image",
+        url: frameBase + frames[i] + "?v=" + Date.now(),
+        coordinates: overlayCoords
+      });
+      map.addLayer({
+        id: "mrms-layer",
+        type: "raster",
+        source: "mrms",
+        paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 }
+      });
+      setFrame(i);
+      if (autoplay && !timer) {
+        document.getElementById("play").textContent = "Pause";
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }
+    }
+    try {
+      const alerts = await loadAlerts();
+      addAlertLayers(alerts);
+    } catch (e) { console.error("MRMS alerts:", e); }
+  });
+
+  map.on("error", (e) => { console.error("Mapbox error:", e); });
+
+  async function refreshManifest() {
+    try {
+      const resp = await fetch(manifestUrl + "?t=" + Date.now(), { cache: "no-store" });
+      if (!resp.ok) return;
+      const mf = await resp.json();
+      const newAll = mf.frames || [];
+      const t = document.getElementById("titleEl");
+      if (t) t.textContent = "MRMS Composite Reflectivity";
+      if (newAll.length === 0) return;
+      const ourLast = frames.length ? frames[frames.length - 1] : null;
+      const hasNew = ourLast !== newAll[newAll.length - 1];
+      const cur = frames[i];
+      allFrames = newAll;
+      frames = allFrames.slice(-frameLimit);
+      countEl.textContent = frames.length;
+      if (!map.getSource("mrms") && frames.length && overlayCoords) {
+        map.addSource("mrms", { type: "image", url: frameBase + frames[frames.length - 1] + "?v=" + Date.now(), coordinates: overlayCoords });
+        map.addLayer({ id: "mrms-layer", type: "raster", source: "mrms", paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 } });
+        i = frames.length - 1;
+        setFrame(i);
+      } else if (timer) {
+        i = Math.min(i, frames.length - 1);
+        setFrame(i);
+      } else {
+        if (hasNew) { i = frames.length - 1; setFrame(i); }
+        else { const idx = frames.indexOf(cur); i = idx >= 0 ? idx : frames.length - 1; if (idx < 0) setFrame(i); }
+      }
+    } catch (_) {}
+  }
+
+  document.getElementById("play").onclick = () => {
+    if (timer) { clearInterval(timer); timer = null; document.getElementById("play").textContent = "Play"; }
+    else if (frames.length) { document.getElementById("play").textContent = "Pause"; timer = setInterval(advance, Number(document.getElementById("speed").value)); }
+  };
+  document.getElementById("stepBack").onclick = () => { clearInterval(timer); timer = null; document.getElementById("play").textContent = "Play"; if (frames.length) setFrame((i - 1 + frames.length) % frames.length); };
+  document.getElementById("stepFwd").onclick = () => { clearInterval(timer); timer = null; document.getElementById("play").textContent = "Play"; if (frames.length) setFrame((i + 1) % frames.length); };
+  document.getElementById("speed").oninput = () => { document.getElementById("speedVal").textContent = document.getElementById("speed").value; if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); } };
+  document.getElementById("opacity").value = radarOpacity;
+  document.getElementById("opacityVal").textContent = radarOpacity;
+  document.getElementById("opacity").oninput = () => {
+    const v = Number(document.getElementById("opacity").value);
+    document.getElementById("opacityVal").textContent = v;
+    radarOpacity = v;
+    localStorage.setItem(OPACITY_KEY, String(v));
+    if (map.getLayer("mrms-layer")) map.setPaintProperty("mrms-layer", "raster-opacity", v / 100);
+  };
+  document.getElementById("refresh").onclick = () => refreshManifest();
+  document.getElementById("fullscreen").onclick = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  };
+
+  window.addEventListener("resize", () => map.resize());
+  document.addEventListener("fullscreenchange", () => map.resize());
+
+  document.getElementById("speedVal").textContent = document.getElementById("speed").value;
+  setInterval(refreshManifest, POLL_MS);
+  setTimeout(refreshManifest, 2000);
+  setInterval(async () => { const a = await loadAlerts(); if (a) addAlertLayers(a); }, ALERT_POLL_MS);
+})();
+</script>
+</body>
+</html>

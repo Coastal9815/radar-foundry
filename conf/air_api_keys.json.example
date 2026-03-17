@@ -1,0 +1,4 @@
+{
+  "airnow_api_key": "YOUR_AIRNOW_API_KEY",
+  "google_pollen_api_key": "YOUR_GOOGLE_POLLEN_API_KEY"
+}

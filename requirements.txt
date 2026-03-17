@@ -1,0 +1,9 @@
+# Core radar-foundry dependencies
+# Install: pip install -r requirements.txt
+
+# Celestial API (bin/celestial_api.py, /api/celestial/summary)
+astral>=3.2
+skyfield>=1.46
+
+# Satellite (bin/render_goes_frame.py, bin/update_goes_loop.py)
+s3fs>=2024.1.0

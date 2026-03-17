@@ -1,0 +1,350 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MRW KCLX Mapbox</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.19.1/mapbox-gl.js"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; background:#000; color:#ddd; font-family:-apple-system,system-ui,sans-serif; overflow:hidden; }
+    #map { position:fixed; inset:0; width:100%; height:100%; }
+    .top {
+      position:fixed; top:0; left:0; right:0; z-index:10;
+      display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px; flex-wrap:wrap;
+      background:rgba(0,0,0,.75); backdrop-filter:blur(4px);
+    }
+    @media (max-width: 480px), (max-height: 400px) {
+      .top { padding:4px 6px; gap:4px; }
+      .top .title { font-size:12px; margin-right:4px; }
+      .meta, .top .meta { font-size:10px; }
+      .btns button, .btns select { padding:2px 4px; font-size:11px; }
+      .btns input[type="range"] { width:80px; }
+    }
+    .btns { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button, select { background:#222; color:#ddd; border:1px solid #444; padding:6px 10px; border-radius:8px; cursor:pointer; }
+    button:hover { background:#2a2a2a; }
+    input[type="range"] { width:180px; }
+    .meta { font-size:12px; opacity:.9; }
+    .top .title { font-size:18px; font-weight:600; margin-right:10px; }
+    .frameStamp {
+      position:fixed; bottom:12px; right:12px; z-index:10;
+      background:rgba(0,0,0,.7); color:#fff; padding:6px 10px;
+      font-size:14px; font-weight:600; font-variant-numeric:tabular-nums;
+      border-radius:6px; pointer-events:none;
+    }
+    @media (max-width: 480px), (max-height: 400px) {
+      .frameStamp { padding:2px 4px; font-size:10px; bottom:4px; right:4px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="top">
+      <div class="btns" style="flex-shrink:0">
+        <button id="play">Play</button>
+        <button id="stepBack">◀</button>
+        <button id="stepFwd">▶</button>
+        <input id="speed" type="range" min="50" max="500" value="160" />
+        <span class="meta">Speed: <span id="speedVal">160</span> ms</span>
+        <select id="frameLimit" title="Frames in loop">
+          <option value="6">6</option>
+          <option value="12">12</option>
+          <option value="24">24</option>
+          <option value="36">36</option>
+          <option value="48">48</option>
+          <option value="72">72</option>
+        </select>
+        <button id="refresh" title="Refresh">↻</button>
+        <button id="fullscreen" title="Fullscreen">⛶</button>
+      </div>
+      <div class="meta" style="flex-shrink:0; display:flex; align-items:center;">
+        <span class="title">CHS</span>
+        Frame: <span id="idx">0</span>/<span id="count">0</span>
+        · <span id="ts">—</span>
+      </div>
+  </div>
+  <div id="frameStamp" class="frameStamp">—</div>
+
+<script>
+(async function () {
+  const params = new URLSearchParams(location.search);
+  const embedW = parseInt(params.get("width") || "0", 10);
+  const embedH = parseInt(params.get("height") || "0", 10);
+  if (embedW > 0 && embedH > 0) {
+    const vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.setAttribute("content", `width=${embedW},height=${embedH},initial-scale=1,maximum-scale=1,user-scalable=no`);
+    document.documentElement.style.cssText = `width:${embedW}px;height:${embedH}px;overflow:hidden;`;
+    document.body.style.cssText = `width:${embedW}px;height:${embedH}px;overflow:hidden;margin:0;padding:0;`;
+    const mapEl = document.getElementById("map");
+    mapEl.style.cssText = `position:fixed;inset:0;width:${embedW}px;height:${embedH}px;`;
+    mapEl.offsetHeight;
+  }
+  const MAPBOX = {
+    accessToken: "YOUR_MAPBOX_PUBLIC_TOKEN",
+    style: "mapbox://styles/scott3294/cmlg0hi32000i01qw7tik8xdm"
+  };
+  const SITE = "KCLX";
+  const WX_SERVE = "http://192.168.2.2:8080";
+  const BASE_URL = (window.location.origin && window.location.origin !== "null" && !window.location.origin.startsWith("file"))
+    ? window.location.origin : WX_SERVE;
+  let manifestUrl = `${BASE_URL}/${SITE}/manifest.json`;
+  let frameBase = `${BASE_URL}/${SITE}/`;
+  const CENTER = [-81.075938, 31.919173];
+  const HALF_KM = 483;
+  const viewportFactor = Math.max(0.25, Math.min(1, parseFloat(new URLSearchParams(location.search).get("viewport") || "1") || 1));
+  const R = 6378137;
+  const HALF = Math.PI * R;
+  function mercToLon(x) { return x * 180 / HALF; }
+  function mercToLat(y) { return 180/Math.PI * (2*Math.atan(Math.exp(y/R)) - Math.PI/2); }
+  const x0 = CENTER[0] * (Math.PI/180) * R;
+  const y0 = Math.log(Math.tan((90+CENTER[1])*Math.PI/360)) * R;
+  // Radar image extent is fixed (basemap_geometry.json); coords must match regardless of viewport
+  const halfM = HALF_KM * 1000;
+  const coords = [
+    [mercToLon(x0 - halfM), mercToLat(y0 + halfM)],
+    [mercToLon(x0 + halfM), mercToLat(y0 + halfM)],
+    [mercToLon(x0 + halfM), mercToLat(y0 - halfM)],
+    [mercToLon(x0 - halfM), mercToLat(y0 - halfM)]
+  ];
+
+  const FRAME_LIMIT_KEY = "mrw_frame_limit_kclx_mapbox";
+  const FRAME_LIMIT_OPTS = [6, 12, 24, 36, 48, 72];
+  let allFrames = [], frames = [], i = 0, timer = null;
+  let frameLimit = parseInt(params.get("frameLimit") || localStorage.getItem(FRAME_LIMIT_KEY) || "72", 10);
+  if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 72;
+  const autoplay = params.has("autoplay") || params.has("play");
+  const locked = params.has("locked") || params.has("embed");
+  const defaultSpeed = Math.max(50, Math.min(500, parseInt(params.get("speed") || "215", 10)));
+  const POLL_MS = 15000;
+
+  const frameLimitEl = document.getElementById("frameLimit");
+  const countEl = document.getElementById("count");
+  const idxEl = document.getElementById("idx");
+  const tsEl = document.getElementById("ts");
+  const frameStampEl = document.getElementById("frameStamp");
+  const speedEl = document.getElementById("speed");
+  const speedValEl = document.getElementById("speedVal");
+  speedEl.value = String(defaultSpeed);
+  speedValEl.textContent = String(defaultSpeed);
+  frameLimitEl.value = String(frameLimit);
+  frameLimitEl.onchange = () => {
+    frameLimit = parseInt(frameLimitEl.value, 10);
+    localStorage.setItem(FRAME_LIMIT_KEY, String(frameLimit));
+    frames = allFrames.slice(-frameLimit);
+    countEl.textContent = frames.length;
+    if (frames.length && i >= frames.length) i = frames.length - 1;
+    if (frames.length) setFrame(i);
+    if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); }
+  };
+
+  function setFrame(n) {
+    if (!frames.length) return;
+    i = Math.max(0, Math.min(n, frames.length - 1));
+    const name = frames[i];
+    const url = frameBase + name + "?v=" + Date.now();
+    idxEl.textContent = i + 1;
+    countEl.textContent = frames.length;
+    const ts = name.replace(".png", "");
+    const timeStr = new Date(Date.UTC(parseInt(ts.slice(0,4)), parseInt(ts.slice(4,6))-1, parseInt(ts.slice(6,8)), parseInt(ts.slice(9,11)), parseInt(ts.slice(11,13)))).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",hour12:true});
+    tsEl.textContent = timeStr;
+    frameStampEl.textContent = timeStr;
+    const src = map.getSource("radar");
+    if (src) src.updateImage({ url: url });
+  }
+
+  const LOOP_HOLD_MS = 1000;
+
+  function advance() {
+    if (i >= frames.length - 1) {
+      clearInterval(timer);
+      timer = null;
+      setTimeout(() => {
+        setFrame(0);
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }, LOOP_HOLD_MS);
+    } else {
+      setFrame(i + 1);
+    }
+  }
+
+  async function loadManifest() {
+    const tryFetch = async (base) => {
+      const url = `${base}/${SITE}/manifest.json`;
+      const resp = await fetch(url, { cache: "no-store" });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const mf = await resp.json();
+      if (!mf.frames || mf.frames.length === 0) throw new Error("empty frames");
+      return { mf, base };
+    };
+    try {
+      let mf, base = BASE_URL;
+      try {
+        ({ mf, base } = await tryFetch(BASE_URL));
+      } catch (_) {
+        ({ mf, base } = await tryFetch(WX_SERVE));
+        manifestUrl = `${base}/${SITE}/manifest.json`;
+        frameBase = `${base}/${SITE}/`;
+      }
+      allFrames = mf.frames || [];
+      frames = allFrames.slice(-frameLimit);
+      countEl.textContent = frames.length;
+      i = frames.length ? frames.length - 1 : 0;
+    } catch (e) {
+      console.error("Failed to load manifest:", e);
+    }
+  }
+
+  await loadManifest();
+
+  mapboxgl.accessToken = MAPBOX.accessToken;
+  const mapZoom = 6 + Math.log2(1 / viewportFactor);
+  const map = new mapboxgl.Map({
+    container: "map",
+    style: MAPBOX.style,
+    center: CENTER,
+    zoom: mapZoom,
+    minZoom: 4,
+    maxZoom: 14
+  });
+
+  const HOME_LON = -81.07592787774146;
+  const HOME_LAT = 31.919139056992407;
+
+  async function loadAlerts() {
+    try {
+      const resp = await fetch(BASE_URL + "/alerts.json?t=" + Date.now(), { cache: "no-store" });
+      if (!resp.ok) return null;
+      return await resp.json();
+    } catch (_) { return null; }
+  }
+
+  function addAlertLayers(data) {
+    if (!data || !map.getSource) return;
+    const svr = data.svr || { type: "FeatureCollection", features: [] };
+    const tor = data.tor || { type: "FeatureCollection", features: [] };
+    const torWatch = data.tor_watch || { type: "FeatureCollection", features: [] };
+    const svrWatch = data.svr_watch || { type: "FeatureCollection", features: [] };
+    const sws = data.sws || { type: "FeatureCollection", features: [] };
+    if (!map.getSource("alerts-tor-watch")) {
+      map.addSource("alerts-tor-watch", { type: "geojson", data: torWatch });
+      map.addLayer({ id: "alerts-tor-watch-fill", type: "fill", source: "alerts-tor-watch", paint: { "fill-color": "#ef4444", "fill-opacity": 0.2 } });
+    } else { map.getSource("alerts-tor-watch").setData(torWatch); }
+    if (!map.getSource("alerts-svr-watch")) {
+      map.addSource("alerts-svr-watch", { type: "geojson", data: svrWatch });
+      map.addLayer({ id: "alerts-svr-watch-fill", type: "fill", source: "alerts-svr-watch", paint: { "fill-color": "#facc15", "fill-opacity": 0.2 } });
+    } else { map.getSource("alerts-svr-watch").setData(svrWatch); }
+    if (!map.getSource("alerts-svr")) {
+      map.addSource("alerts-svr", { type: "geojson", data: svr });
+      map.addLayer({ id: "alerts-svr-line", type: "line", source: "alerts-svr", paint: { "line-color": "#facc15", "line-width": 2 } });
+    } else { map.getSource("alerts-svr").setData(svr); }
+    if (!map.getSource("alerts-tor")) {
+      map.addSource("alerts-tor", { type: "geojson", data: tor });
+      map.addLayer({ id: "alerts-tor-line", type: "line", source: "alerts-tor", paint: { "line-color": "#ef4444", "line-width": 2 } });
+    } else { map.getSource("alerts-tor").setData(tor); }
+    if (!map.getSource("alerts-sws")) {
+      map.addSource("alerts-sws", { type: "geojson", data: sws });
+      map.addLayer({ id: "alerts-sws-line", type: "line", source: "alerts-sws", paint: { "line-color": "#f97316", "line-width": 1.5 } });
+    } else { map.getSource("alerts-sws").setData(sws); }
+  }
+
+  map.on("load", async () => {
+    map.resize();
+    if (embedW > 0 && embedH > 0) {
+      map.setCenter(CENTER);
+      map.setZoom(mapZoom);
+    }
+    if (locked) {
+      map.dragPan.disable();
+      map.scrollZoom.disable();
+      map.doubleClickZoom.disable();
+      map.touchZoomRotate.disable();
+      map.boxZoom.disable();
+      map.keyboard.disable();
+      const z = map.getZoom();
+      map.setMinZoom(z);
+      map.setMaxZoom(z);
+      map.once("idle", () => map.setMaxBounds(map.getBounds()));
+    }
+    map.addSource("home-location", {
+      type: "geojson",
+      data: { type: "Feature", geometry: { type: "Point", coordinates: [HOME_LON, HOME_LAT] }, properties: {} }
+    });
+    map.addLayer({
+      id: "home-dot",
+      type: "circle",
+      source: "home-location",
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 4, 14, 8],
+        "circle-color": "#ffffff"
+      }
+    });
+    if (frames.length) {
+      map.addSource("radar", {
+        type: "image",
+        url: frameBase + frames[i] + "?v=" + Date.now(),
+        coordinates: coords
+      });
+      map.addLayer({
+        id: "radar-layer",
+        type: "raster",
+        source: "radar",
+        paint: { "raster-fade-duration": 0, "raster-opacity": 0.9 }
+      });
+      setFrame(i);
+      if (autoplay && !timer) {
+        document.getElementById("play").textContent = "Pause";
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }
+    }
+    const alerts = await loadAlerts();
+    addAlertLayers(alerts);
+  });
+
+  async function refreshManifest() {
+    try {
+      const resp = await fetch(manifestUrl + "?t=" + Date.now(), { cache: "no-store" });
+      if (!resp.ok) return;
+      const mf = await resp.json();
+      const newAll = mf.frames || [];
+      if (newAll.length === 0) return;
+      const ourLast = frames.length ? frames[frames.length - 1] : null;
+      const hasNew = ourLast !== newAll[newAll.length - 1];
+      const cur = frames[i];
+      allFrames = newAll;
+      frames = allFrames.slice(-frameLimit);
+      countEl.textContent = frames.length;
+      if (timer) {
+        i = Math.min(i, frames.length - 1);
+        setFrame(i);
+      } else {
+        if (hasNew) { i = frames.length - 1; setFrame(i); }
+        else { const idx = frames.indexOf(cur); i = idx >= 0 ? idx : frames.length - 1; if (idx < 0) setFrame(i); }
+      }
+    } catch (_) {}
+  }
+
+  document.getElementById("play").onclick = () => {
+    if (timer) { clearInterval(timer); timer = null; document.getElementById("play").textContent = "Play"; }
+    else if (frames.length) { document.getElementById("play").textContent = "Pause"; timer = setInterval(advance, Number(document.getElementById("speed").value)); }
+  };
+  document.getElementById("stepBack").onclick = () => { clearInterval(timer); timer = null; document.getElementById("play").textContent = "Play"; if (frames.length) setFrame((i - 1 + frames.length) % frames.length); };
+  document.getElementById("stepFwd").onclick = () => { clearInterval(timer); timer = null; document.getElementById("play").textContent = "Play"; if (frames.length) setFrame((i + 1) % frames.length); };
+  document.getElementById("speed").oninput = () => { document.getElementById("speedVal").textContent = document.getElementById("speed").value; if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); } };
+  document.getElementById("refresh").onclick = () => refreshManifest();
+  document.getElementById("fullscreen").onclick = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  };
+
+  window.addEventListener("resize", () => map.resize());
+  document.addEventListener("fullscreenchange", () => map.resize());
+
+  speedValEl.textContent = speedEl.value;
+  setInterval(refreshManifest, POLL_MS);
+  setTimeout(refreshManifest, 2000);
+  setInterval(async () => { const a = await loadAlerts(); if (a) addAlertLayers(a); }, 120000);
+})();
+</script>
+</body>
+</html>

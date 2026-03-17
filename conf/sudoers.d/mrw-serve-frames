@@ -1,0 +1,7 @@
+# Allow scott to manage mrw-serve-frames without password (for remote automation)
+scott ALL=(ALL) NOPASSWD: /bin/systemctl start mrw-serve-frames
+scott ALL=(ALL) NOPASSWD: /bin/systemctl stop mrw-serve-frames
+scott ALL=(ALL) NOPASSWD: /bin/systemctl restart mrw-serve-frames
+scott ALL=(ALL) NOPASSWD: /bin/systemctl status mrw-serve-frames
+scott ALL=(ALL) NOPASSWD: /bin/systemctl enable mrw-serve-frames
+scott ALL=(ALL) NOPASSWD: /bin/systemctl daemon-reload

@@ -1,0 +1,8 @@
+{
+  "output_dir": "C:\\MRW\\lightning",
+  "shmem_name": "NXFGIPC_SHMEM_0822931589443_238731_GATE0",
+  "reader_semaphore": "Reader Semaphore",
+  "writer_semaphore": "Writer Semaphore",
+  "sensor_id": "MRW",
+  "emit_noise": false
+}

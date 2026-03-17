@@ -1,0 +1,8 @@
+{
+  "local_level2_sites": ["KCLX", "KJAX"],
+  "N": 1600,
+  "half_km": 230,
+  "sweep": 0,
+  "mask_below_dbz": 5,
+  "min_cluster_px": 10
+}
