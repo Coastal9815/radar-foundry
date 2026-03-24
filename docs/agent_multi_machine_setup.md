@@ -2,7 +2,7 @@
 
 SSH infrastructure for the AI agent to work across weather-core, wx-i9, pi-wx, wx-display, and the office Mac.
 
-**Development:** Local-first on ScottsMacStudio. Both radar-foundry and moonriverweather-public live in the multi-root workspace under `/Volumes/Pierce_Archive/Weather Projects/`. wx-core and wx-i9 are runtime/deploy targets; code is deployed to `~/wx/radar-foundry` on those machines.
+**Development:** Local-first on ScottsMacStudio. Both radar-foundry and moonriverweather-public live in the multi-root workspace under `/Volumes/Pierce_Archive/Cursor Weather Projects/`. wx-core and wx-i9 are runtime/deploy targets; code is deployed to `~/wx/radar-foundry` on those machines.
 
 ## Machine Roster
 

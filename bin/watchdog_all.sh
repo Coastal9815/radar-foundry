@@ -31,10 +31,11 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) watchdog start" >> "$LOG"
 action=0
 
 # --- 1. Kill stuck processes (running too long) ---
-for pattern in "update_mrms_loop" "radar_loop_coordinator" "lightning_nex_tail"; do
+# lightning_nex_tail runs indefinitely; do not kill by elapsed time (that was SIGKILL every ~15 min).
+# Stale lightning is handled via lightning_status.json (STALE_LIGHTNING + recovery below).
+for pattern in "update_mrms_loop" "radar_loop_coordinator"; do
   max_min=$MAX_MRMS_MIN
   [[ "$pattern" == "radar_loop_coordinator" ]] && max_min=$MAX_COORDINATOR_MIN
-  [[ "$pattern" == "lightning_nex_tail" ]] && max_min=15  # 15 min = stuck (Lightning-PC down, etc.)
   pids=$(pgrep -f "$pattern" 2>/dev/null)
   for pid in $pids; do
     elapsed=$(ps -o etime= -p "$pid" 2>/dev/null | tr -d ' ')

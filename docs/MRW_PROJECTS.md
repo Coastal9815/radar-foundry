@@ -21,7 +21,7 @@ When opened via `mrw-multi.code-workspace`, this workspace includes two related 
 
 ## 2. moonriverweather-public
 
-**Path:** `/Volumes/Pierce_Archive/Weather Projects/moonriverweather-public` (local on Office Mac)
+**Path:** `/Volumes/Pierce_Archive/Cursor Weather Projects/moonriverweather-public` (local on Office Mac)
 
 **Focus:** Public website — moonriverweather.com
 

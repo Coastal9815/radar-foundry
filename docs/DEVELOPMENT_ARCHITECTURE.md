@@ -22,7 +22,7 @@
 | Project | Path |
 |---------|------|
 | radar-foundry | `~/wx/radar-foundry` |
-| moonriverweather-public | `/Volumes/Pierce_Archive/Weather Projects/moonriverweather-public` |
+| moonriverweather-public | `/Volumes/Pierce_Archive/Cursor Weather Projects/moonriverweather-public` |
 
 **Workspace:** Open `mrw-multi.code-workspace` to work on both projects in one Cursor window.
 
