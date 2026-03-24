@@ -1,11 +1,11 @@
 --- airlink.py
 +++ airlink.py
-@@ -356,13 +356,14 @@ class AirLink(StdService):
+@@ -357,13 +357,14 @@
+ 
          self.engine = engine
          self.config_dict = config_dict.get('AirLink', {})
- 
 +        airlink_poll_interval = to_int(self.config_dict.get('poll_interval', 5))
-+
+ 
          self.cfg = Configuration(
              lock             = threading.Lock(),
              concentrations   = None,

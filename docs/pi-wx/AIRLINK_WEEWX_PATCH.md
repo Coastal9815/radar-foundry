@@ -6,7 +6,14 @@
 **Tracked in repo:**
 
 - This document — full procedure and `weewx.conf` snippet  
-- `patches/pi-wx/weewx-airlink-poll-interval.patch` — apply after extension upgrades
+- `patches/pi-wx/weewx-airlink-poll-interval.patch` — re-apply after extension upgrades
+
+**Canonical copy on pi-wx (synced from radar-foundry):**
+
+- `/home/scott/weewx-airlink-mrw/AIRLINK_WEEWX_PATCH.md`  
+- `/home/scott/weewx-airlink-mrw/weewx-airlink-poll-interval.patch`  
+
+The agent keeps these updated via `scp` from the Office Mac repo; no manual steps on the Pi are required for routine maintenance.
 
 ---
 
@@ -15,7 +22,7 @@
 Merge or replace the `[AirLink]` block so it includes:
 
 - `poll_interval` — seconds between background HTTP fetches to the AirLink (e.g. **30**).  
-- `timeout` — per-request timeout in seconds (e.g. **12**; stock default in extension is **10**, pi-wx previously used **2** which was too aggressive).
+- `timeout` — per-request timeout in seconds (e.g. **12**; stock default in extension is **10**; **2** was too aggressive on this LAN).
 
 Example (values can be tuned):
 
@@ -34,11 +41,7 @@ Example (values can be tuned):
         timeout = 12
 ```
 
-Then:
-
-```bash
-sudo systemctl restart weewx
-```
+After editing config: `sudo systemctl restart weewx` on pi-wx.
 
 Confirm in logs:
 
@@ -50,34 +53,34 @@ user.airlink: Source 1 for AirLink readings: 192.168.1.167:80, timeout: 12
 
 ## 2. Patch `airlink.py` — honor `poll_interval`
 
-**On pi-wx**, the extension usually lives at:
+**Location on pi-wx:** `/etc/weewx/bin/user/airlink.py`  
+(If WeeWX is installed elsewhere, locate with `find /etc/weewx /usr/share/weewx -name airlink.py`.)
 
-`/etc/weewx/bin/user/airlink.py`
+**After** upgrading or reinstalling `weewx-airlink`, re-apply the patch from `~/weewx-airlink-mrw/weewx-airlink-poll-interval.patch` (or from this repo).
 
-(Paths may differ if WeeWX is installed elsewhere; locate with `find /etc/weewx /usr/share/weewx -name airlink.py 2>/dev/null`.)
-
-**After** upgrading or reinstalling `weewx-airlink`, re-apply the patch from this repo:
+**Agent procedure (pi-wx):**
 
 ```bash
-# From a copy of radar-foundry on the Office Mac or after git pull:
-scp patches/pi-wx/weewx-airlink-poll-interval.patch pi-wx:/tmp/
-ssh pi-wx
 cd /etc/weewx/bin/user
 sudo cp -a airlink.py "airlink.py.bak.$(date +%Y%m%d%H%M)"
-sudo patch -p0 --dry-run < /tmp/weewx-airlink-poll-interval.patch   # verify
-sudo patch -p0 < /tmp/weewx-airlink-poll-interval.patch
+sudo patch -p0 --dry-run < /home/scott/weewx-airlink-mrw/weewx-airlink-poll-interval.patch
+sudo patch -p0 < /home/scott/weewx-airlink-mrw/weewx-airlink-poll-interval.patch
 sudo systemctl restart weewx
 ```
 
-The patch replaces the hardcoded `poll_interval = 5` in `AirLink.__init__` with:
+The patch replaces the hardcoded `poll_interval = 5` in `AirLink.__init__` with `airlink_poll_interval = to_int(self.config_dict.get('poll_interval', 5))` so `[AirLink]` in `weewx.conf` controls polling.
 
-`airlink_poll_interval = to_int(self.config_dict.get('poll_interval', 5))`
+**Agent procedure (Office Mac → pi-wx):** sync patch + this doc after `git pull`:
 
-so the value under `[AirLink]` in `weewx.conf` is used.
+```bash
+scp radar-foundry/patches/pi-wx/weewx-airlink-poll-interval.patch \
+    radar-foundry/docs/pi-wx/AIRLINK_WEEWX_PATCH.md \
+    pi-wx:~/weewx-airlink-mrw/
+```
 
 ---
 
-## 3. Manual edit (if `patch` is unavailable)
+## 3. Manual edit (if `patch` fails)
 
 In `airlink.py`, inside `AirLink.__init__`, change:
 
