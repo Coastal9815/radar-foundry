@@ -1,0 +1,18 @@
+--- airlink.py
++++ airlink.py
+@@ -356,13 +356,14 @@ class AirLink(StdService):
+         self.engine = engine
+         self.config_dict = config_dict.get('AirLink', {})
+ 
++        airlink_poll_interval = to_int(self.config_dict.get('poll_interval', 5))
++
+         self.cfg = Configuration(
+             lock             = threading.Lock(),
+             concentrations   = None,
+             archive_interval = int(config_dict['StdArchive']['archive_interval']),
+             archive_delay    = to_int(config_dict['StdArchive'].get('archive_delay', 15)),
+-            poll_interval    = 5,
++            poll_interval    = airlink_poll_interval,
+             sources          = AirLink.configure_sources(self.config_dict))
+         with self.cfg.lock:
+             self.cfg.concentrations = get_concentrations(self.cfg)

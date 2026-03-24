@@ -13,6 +13,7 @@ Generated from live exploration.
 | **Davis WLL** | Weather Link Live at 192.168.1.122 — primary sensor API |
 | **Dashboard** | Custom `gen_*.sh` scripts in `/home/scott/dashboard/bin/` — produce JSON for MRW |
 | **HTTP** | Nginx serves `/data/*` → symlinked to `/home/scott/dashboard/data/` |
+| **AirLink (WeeWX)** | Davis AirLink at `192.168.1.167`; `user.airlink` injects PM into loop/archive. Timeout / poll tuning and `airlink.py` patch: **`docs/pi-wx/AIRLINK_WEEWX_PATCH.md`**, patch file **`patches/pi-wx/weewx-airlink-poll-interval.patch`**. |
 
 **Data flow:** WLL → gen_now.sh → now.json → gen_wind.sh, gen_extremes.sh, gen_computed_rt.sh → wind.json, extremes.json, computed_rt.json. Extremes also sync from WeeWX archive via `sync_weewx_wind_gust_extremes.py`.
 

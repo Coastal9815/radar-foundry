@@ -91,6 +91,8 @@ Browser: player/mrms/, player/kclx/, etc.
 | `serve_root/` | Symlink tree for HTTP serve |
 | `out/` | Generated basemaps, MRMS frames |
 | `basemap/src/` | TIGER, Natural Earth shapefiles |
+| `docs/pi-wx/` | pi-wx operational notes (WeeWX AirLink patch, etc.) |
+| `patches/pi-wx/` | Unified diffs for pi-wx (re-apply after WeeWX extension upgrades) |
 
 ---
 
