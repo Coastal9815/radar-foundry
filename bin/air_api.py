@@ -49,17 +49,24 @@ def _set_cache(key, data, max_age_sec):
 
 
 def _fetch_pi_wx_air():
-    """Fetch PM2.5 and PM10 from pi-wx air.json."""
+    """Fetch PM2.5 and PM10 from pi-wx air.json.
+
+    Prefer EPA nowcast (pm_*_nowcast_ugm3) when present — same as moonriverweather.com
+    (AirQualityBox uses pm25Nowcast ?? pm25). Falls back to instantaneous *_ugm3.
+    """
     try:
         url = f"{PI_WX_BASE}/data/air.json"
         req = urllib.request.Request(url, headers={"User-Agent": "radar-foundry-air-api/1"})
         with urllib.request.urlopen(req, timeout=10) as r:
             data = json.loads(r.read().decode())
         air = data.get("air", {})
-        return {
-            "pm25": air.get("pm_2p5_ugm3"),
-            "pm10": air.get("pm_10_ugm3"),
-        }
+        pm25 = air.get("pm_2p5_nowcast_ugm3")
+        if pm25 is None:
+            pm25 = air.get("pm_2p5_ugm3")
+        pm10 = air.get("pm_10_nowcast_ugm3")
+        if pm10 is None:
+            pm10 = air.get("pm_10_ugm3")
+        return {"pm25": pm25, "pm10": pm10}
     except Exception:
         return {"pm25": None, "pm10": None}
 
