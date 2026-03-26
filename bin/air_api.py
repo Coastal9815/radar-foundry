@@ -20,6 +20,40 @@ HRRR_BUCKET = "s3://noaa-hrrr-bdp-pds"
 _cache = {}
 
 
+def _format_valid_time_for_json(v):
+    """Convert cfgrib/xarray valid_time (often int64 ns since Unix epoch) to ISO 8601 UTC."""
+    if v is None:
+        return None
+    try:
+        import numpy as np
+
+        if isinstance(v, np.ndarray):
+            if v.size == 0:
+                return None
+            v = v.reshape(-1)[0]
+        if hasattr(v, "item"):
+            v = v.item()
+    except Exception:
+        pass
+    if isinstance(v, str):
+        s = v.strip()
+        if s and not s.isdigit():
+            return s
+    try:
+        sec = float(v)
+        if sec > 1e15:
+            sec /= 1e9
+        elif sec > 1e12:
+            sec /= 1e6
+        if 946684800 <= sec <= 4102444800:
+            return datetime.fromtimestamp(sec, tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+    except (TypeError, ValueError, OSError):
+        pass
+    return str(v)
+
+
 def _load_keys():
     """Load API keys from conf/air_api_keys.json or env vars."""
     keys = {}
@@ -401,9 +435,11 @@ def fetch_saharan_dust():
         if "valid_time" in ds.coords:
             vt = ds.coords["valid_time"].values
             try:
-                valid_time = str(vt.item()) if hasattr(vt, "item") and np.asarray(vt).size == 1 else str(vt)
+                valid_time = _format_valid_time_for_json(
+                    vt.item() if hasattr(vt, "item") and np.asarray(vt).size == 1 else vt
+                )
             except (ValueError, TypeError):
-                valid_time = str(vt) if vt is not None else None
+                valid_time = _format_valid_time_for_json(vt)
         ds.close()
         if grib_path and os.path.exists(grib_path):
             try:
