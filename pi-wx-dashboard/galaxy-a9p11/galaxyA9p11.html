@@ -1754,13 +1754,15 @@ function mrwAlert15(s){
 })();
 
 
-/* A9P_LEFT3_AIR_PRESSURE_JS_V2 — PM via /api/air/summary when CORS allows; else air.json; colors = Master air-quality.js */
+/* A9P_LEFT3_AIR_PRESSURE_JS_V3 — PM: parallel local air.json + timed API summary (hung /api must not block); pressure always parallel */
 (function(){
   const POLL_MS = 3000;
+  /** Public API first: same-origin /api/air/summary on pi-wx often mis-proxied and can hang the whole poll. */
   const AIR_URLS = [
-    "/api/air/summary",
     "https://api.moonriverweather.com/api/air/summary",
+    "/api/air/summary",
   ];
+  const SUMMARY_FETCH_MS = 2800;
 
   function $(id){ return document.getElementById(id); }
   function setText(id, v){
@@ -1779,6 +1781,14 @@ function mrwAlert15(s){
     const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) throw new Error(url + " " + r.status);
     return await r.json();
+  }
+
+  function fetchWithTimeout(url, init, ms){
+    const ctrl = new AbortController();
+    const tid = setTimeout(function(){ try { ctrl.abort(); } catch (_) {} }, ms);
+    return fetch(url, Object.assign({}, init, { signal: ctrl.signal })).finally(function(){
+      clearTimeout(tid);
+    });
   }
 
   function pm25Class(v) {
@@ -1810,7 +1820,7 @@ function mrwAlert15(s){
       const base = AIR_URLS[i];
       try{
         const url = base + (base.indexOf("?") >= 0 ? "&" : "?") + "ts=" + Date.now();
-        const r = await fetch(url, { cache: "no-store", mode: "cors" });
+        const r = await fetchWithTimeout(url, { cache: "no-store", mode: "cors", credentials: "omit" }, SUMMARY_FETCH_MS);
         if (!r.ok) continue;
         const data = await r.json();
         if (data && (data.pm25 != null || data.pm10 != null)) return data;
@@ -1819,45 +1829,61 @@ function mrwAlert15(s){
     return null;
   }
 
+  async function loadPmFromLocal(){
+    try{
+      const a = await fetchJSON("/data/air.json?ts=" + Date.now());
+      const air = a?.air || {};
+      const pm25 = num(air.pm_2p5_nowcast_ugm3 ?? air.pm_2p5_ugm3);
+      const pm10 = num(air.pm_10_nowcast_ugm3 ?? air.pm_10_ugm3);
+      return { pm25: pm25, pm10: pm10 };
+    }catch(_){
+      return { pm25: null, pm10: null };
+    }
+  }
+
+  async function loadPressure(){
+    let p_inhg = null;
+    let arrow = null;
+    try{
+      const c = await fetchJSON("/data/computed_rt.json?ts=" + Date.now());
+      p_inhg = num(c?.inputs?.pressure_inhg);
+      arrow = c?.computed?.pressure_trend_arrow;
+    }catch(_){ /* sticky */ }
+    if (p_inhg == null) {
+      try{
+        const nowJ = await fetchJSON("/data/now.json?ts=" + Date.now());
+        const n = (nowJ && nowJ.now) ? nowJ.now : {};
+        p_inhg = num(n.pressure_inhg ?? n.barometer);
+      }catch(_){}
+    }
+    return { p_inhg: p_inhg, arrow: arrow };
+  }
+
   async function poll(){
     try{
-      let pm25 = null;
-      let pm10 = null;
-      const summary = await fetchAirSummary();
-      if (summary) {
-        pm25 = num(summary.pm25);
-        pm10 = num(summary.pm10);
-      }
-      if (pm25 == null || pm10 == null) {
-        try{
-          const a = await fetchJSON("/data/air.json?ts=" + Date.now());
-          if (pm25 == null) pm25 = num(a?.air?.pm_2p5_ugm3);
-          if (pm10 == null) pm10 = num(a?.air?.pm_10_ugm3);
-        }catch(_){ /* sticky */ }
-      }
+      const results = await Promise.allSettled([
+        fetchAirSummary(),
+        loadPmFromLocal(),
+        loadPressure(),
+      ]);
+      const summary = results[0].status === "fulfilled" ? results[0].value : null;
+      const local = results[1].status === "fulfilled" ? results[1].value : { pm25: null, pm10: null };
+      const press = results[2].status === "fulfilled" ? results[2].value : { p_inhg: null, arrow: null };
+
+      let pm25 = num(summary?.pm25);
+      let pm10 = num(summary?.pm10);
+      if (pm25 == null) pm25 = local.pm25;
+      if (pm10 == null) pm10 = local.pm10;
 
       if (pm25 != null) setText("pm25", pm25.toFixed(1));
       if (pm10 != null) setText("pm10", pm10.toFixed(1));
       applyPmClasses($("pm25"), pm25Class(pm25));
       applyPmClasses($("pm10"), pm10Class(pm10));
 
-      let p_inhg = null;
-      let arrow = null;
-      try{
-        const c = await fetchJSON("/data/computed_rt.json?ts=" + Date.now());
-        p_inhg = num(c?.inputs?.pressure_inhg);
-        arrow = c?.computed?.pressure_trend_arrow;
-      }catch(_){ /* sticky */ }
-      if (p_inhg == null) {
-        try{
-          const nowJ = await fetchJSON("/data/now.json?ts=" + Date.now());
-          const n = (nowJ && nowJ.now) ? nowJ.now : {};
-          p_inhg = num(n.pressure_inhg);
-        }catch(_){}
+      if (press.p_inhg != null && Number.isFinite(press.p_inhg)) {
+        setText("p_val", (Math.round(press.p_inhg * 100) / 100).toFixed(2));
       }
-      if (p_inhg != null) setText("p_val", (Math.round(p_inhg * 100) / 100).toFixed(2));
-      if (arrow != null) setText("p_arrow", arrow);
-
+      if (press.arrow != null) setText("p_arrow", press.arrow);
     }catch(e){}
   }
 
