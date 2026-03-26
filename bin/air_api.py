@@ -16,6 +16,9 @@ SMOKE_LEVELS = [(5, "None"), (15, "Light"), (35, "Moderate"), (float("inf"), "He
 SMOKE_COLORS = {"None": None, "Light": "#eab308", "Moderate": "#f97316", "Heavy": "#ef4444"}
 HRRR_BUCKET = "s3://noaa-hrrr-bdp-pds"
 
+# Google Pollen API: shorter cache so public site / gen_air stay fresher (was 12 h).
+POLLEN_CACHE_SEC = 3 * 3600
+
 # In-memory cache: {key: (expires_at, data)}
 _cache = {}
 
@@ -483,9 +486,9 @@ def fetch_saharan_dust():
 
 
 def fetch_pollen():
-    """Fetch pollen from Google Pollen API. Combined level + primary type. Cache 12 hours.
+    """Fetch pollen from Google Pollen API. Combined level + primary type. Cache POLLEN_CACHE_SEC.
     NAB (National Allergy Bureau) has no public API; Google Pollen used as proxy."""
-    cached = _get_cached("pollen", 12 * 3600)
+    cached = _get_cached("pollen", POLLEN_CACHE_SEC)
     if cached is not None:
         return cached
 
@@ -548,7 +551,7 @@ def fetch_pollen():
         "primary": primary,
         "source": "National Allergy Bureau",
     }
-    _set_cache("pollen", result, 12 * 3600)
+    _set_cache("pollen", result, POLLEN_CACHE_SEC)
     return result
 
 

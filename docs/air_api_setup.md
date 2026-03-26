@@ -10,7 +10,7 @@ The MRW Air Quality module uses a single endpoint `/api/air/summary` that collec
 | Ozone | AirNow API | 15 min | Requires `airnow_api_key` |
 | Smoke | NOAA HRRR GRIB2 (noaa-hrrr-bdp-pds) | 1 h | wrfsfcf00, MASSDEN 8m; see [HRRR_SMOKE_STEP1.md](HRRR_SMOKE_STEP1.md) |
 | Saharan Dust | CAMS (Copernicus ADS) | 6 h | Requires ~/.cdsapirc; duaod550 → None/Light/Moderate/Heavy |
-| Pollen | Google Pollen API | 12 h | NAB proxy; requires `google_pollen_api_key` |
+| Pollen | Google Pollen API | 3 h | NAB proxy; requires `google_pollen_api_key` |
 
 ## 1. Create `conf/air_api_keys.json`
 
