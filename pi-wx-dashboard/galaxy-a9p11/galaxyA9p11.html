@@ -1,0 +1,1874 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Moon River Weather — A9+</title>
+  <style>
+    :root{
+      --bg: #3B4A61;          /* NEW main background */
+      --card: #111114;        /* keep dark cards for contrast (for now) */
+      --border: #2a2a30;
+      --muted: #d7dbea;       /* lighter muted text */
+      --text: #f6f7fb;        /* almost white */
+    }
+
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+
+    /* A9+ full-width shell */
+    .wrap{
+      width: 100vw;
+      box-sizing: border-box;
+      padding: var(--padTop) var(--padX) var(--padBot);
+    }
+
+    
+
+    /* A9P_HEIGHT_V1 — make grid fill remaining screen height */
+    html, body { height: 100%; }
+    .wrap{
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .topbar{ flex: 0 0 auto; }
+    .grid{
+      flex: 1 1 auto;                  /* take remaining height */
+      grid-template-rows: repeat(3, 1fr); /* 3 rows fill available height */
+    }
+    .tile{
+      background: transparent;           /* transparent tiles */
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 18px;
+      min-height: 0;
+      box-sizing: border-box;
+    }
+/* allow stretching without forcing auto min-height */
+
+/* HEADER */
+    .topbar{
+      display:grid;
+      grid-template-columns: 1fr;
+      align-items:center;
+      column-gap: 14px;
+      margin: 0 0 15px;
+  margin-left:4px;
+}
+    .title{
+      font-size: var(--titleSize);
+      letter-spacing: .10em;
+      font-weight: 800;
+      color:#e7e7ee;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .meta{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:flex-start;
+      flex-wrap:wrap;
+      white-space:nowrap;
+    }
+    .chip{
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      min-height: var(--chipH);
+      display:inline-flex;
+      align-items:center;
+      padding: 0 var(--chipPadX);
+      font-size: var(--chipSize);
+      font-weight: 900;
+      color: var(--text);
+      letter-spacing:.02em;
+      background: rgba(255,255,255,0.08);
+    }
+/* GRID: 3–2–3 */
+    .grid{
+      display:grid;
+      grid-template-columns: 0.92fr 1.35fr 0.92fr;
+      gap: var(--gap);
+      align-items: stretch;
+    }
+
+    .tile{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      min-height: 118px;
+      box-sizing: border-box;
+    }
+
+    .centerStack{
+      grid-column: 2;
+      grid-row: 1 / span 3;
+      display:grid;
+      grid-template-rows: 1fr 1fr;
+      gap: var(--gap);
+    }
+
+    .ph{
+      padding: 12px 14px;
+      color: var(--muted);
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-size: 18px;
+    }
+  
+    /* A9P_FORCE_TILE_TRANSPARENT_V1 */
+    body.deviceA9P11 .tile{
+      background: transparent !important;
+      border: 2px solid rgba(255,255,255,0.30) !important;
+    }
+
+  
+    /* A9P_WIND_ABS_V1 — absolute overlay so SVG NEVER affects grid height */
+    .windTile{ position: relative; overflow: hidden; }
+    .windAbs{ position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+    .windAbs .compass{ width: 100%; height: 100%; display: block; }
+
+
+    /* A9P_WIND_STYLE_V1 — make compass visible on A9+ theme */
+    .windAbs .ring{ stroke: rgba(255,255,255,0.45); stroke-width: 16; fill: none; }
+    .windAbs .tick{ stroke: rgba(255,255,255,0.14); stroke-width: 2; }
+    .windAbs .tickMajor{ stroke: rgba(255,255,255,0.22); stroke-width: 3; }
+
+    .windAbs .lbl{ fill: rgba(255,255,255,0.85); font-size: 18px; font-weight: 900; letter-spacing: .08em; }
+    .windAbs .needle{ fill: rgba(255,255,255,0.92); }
+
+    .windAbs .dir{  fill: rgba(255,255,255,0.90); font-size: 27px; font-weight: 800; letter-spacing: .06em; }
+    .windAbs .speed{ fill: rgba(255,255,255,0.95); font-size: 94px; font-weight: 900; }
+    .windAbs .unit{ fill: rgba(255,255,255,0.70); font-size: 18px; font-weight: 800; letter-spacing: .10em; }
+    /* A9P_WIND_LABEL_INSET_V3 — ONLY N/NE/SE/SW/NW (leave E/W alone) */
+    .windAbs text.lbl[x="180"][y="6"]{
+      transform: translateY(10px);
+    }
+
+
+    /* A9P_WIND_LABEL_S_ONLY_V1 — pull ONLY 'S' inward */
+    .windAbs text.lbl[x="180"][y="366"]{
+      transform: translateY(-12px);
+    }
+
+
+    /* A9P_WIND_NEEDLE_RED_V1 — make wind needle red */
+    .windAbs .needle{
+      fill: #d93a2f; /* strong, readable red */
+    }
+
+
+    /* A9P_WIND_TICKS_DOWN_V1 — move direction ticks down slightly */
+    .windAbs .tick,
+    .windAbs .tickMajor{
+      transform: translateY(6px);
+    }
+
+
+    /* A9P_WIND_DIR_DOWN_V1 — move ONLY the direction readout down */
+    .windAbs #w_dir_txt{
+      transform: translateY(12px);
+    }
+
+
+    /* A9P_WIND_CALLOUTS_V1 — corner callouts inside wind tile */
+    .windTile{ position: relative; overflow: hidden; }
+    .windAbs{ position:absolute; inset:0; }
+
+    .windAbs .wCorner{
+      position: absolute;
+      color: rgba(255,255,255,0.94);
+      line-height: 1.0;
+      z-index: 5; /* above SVG */
+    }
+    .windAbs .wCorner .clabel{
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      opacity: .90;
+    }
+    .windAbs .wCorner .cvalue{
+      font-size: 51px;          /* ~20% smaller */
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      line-height: 0.92;
+      margin-top: 2px;
+    }
+    .windAbs .wCorner .csub{
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: .05em;
+      opacity: .90;
+      margin-top: 2px;
+    }
+
+    /* Corner placement */
+    .windAbs .wCorner.cTL{ top: 14px; left: 16px; text-align:left; }
+    .windAbs .wCorner.cTR{ top: 14px; right:16px; text-align:right; }
+    .windAbs .wCorner.cBL{ bottom:14px; left: 16px; text-align:left; }
+    .windAbs .wCorner.cBR{ bottom:14px; right:16px; text-align:right; }
+
+
+    
+    /* A9P_TIDE_ABS_V1 — absolute overlay so SVG NEVER affects grid height */
+    .tideTile{ position: relative; overflow: hidden; }
+    .tideAbs{ position: absolute; inset: 0; display:flex; align-items:center; justify-content:center; }
+    .tideAbs .tideSvg{ width:100%; height:100%; display:block; }
+
+    /* A9P_TIDE_PLACEHOLDER_STYLE_V1 — minimal visible placeholder (will be replaced by real tide art) */
+    .tideAbs .ring{ stroke: rgba(255,255,255,0.35); stroke-width: 16; fill:none; }
+    .tideAbs .tick{ stroke: rgba(255,255,255,0.12); stroke-width: 2; }
+    .tideAbs .needle{ fill: rgba(217,58,47,0.95); }
+    .tideAbs .label{ fill: rgba(255,255,255,0.85); font-size: 18px; font-weight: 900; letter-spacing: .08em; }
+
+
+
+    /* A9P_TIDE_G14_CSSHTML_V1 — Galaxy14 Tide scaffold styling for A9+ (NO JS) */
+    /* Scope EVERYTHING to the Tide overlay so nothing else can move. */
+    .tideAbs{ position:absolute; inset:0; } /* reinforce overlay */
+    .tideAbs .tideClock{ width:100%; height:100%; display:block; }
+    .tideAbs .tideClock .ring{ stroke: rgba(255,255,255,0.45); stroke-width:16; fill:none; }
+    .tideAbs .tideClock .lbl{ fill: rgba(255,255,255,0.82); font-size:20px; font-weight:900; letter-spacing:.08em; }
+    .tideAbs .tideClock .tideNeedle{ fill:#d93a2f; } /* match wind needle red */
+    .tideAbs .tideClock .tideNum{ fill: rgba(255,255,255,0.90); font-size:34px; font-weight:900; letter-spacing:.02em; }
+
+    .tideAbs .tideClock .tideMain{
+      fill: rgba(255,255,255,0.95);
+      font-size:94px;
+      font-weight:900;
+      transform: scaleX(0.85);
+      transform-origin: center;
+    }
+    .tideAbs .tideClock .tideSub{
+      fill: rgba(255,255,255,0.72);
+      font-size:20px;
+      font-weight:900;
+      letter-spacing:.10em;
+    }
+    .tideAbs .tideClock .tideFeet{
+      fill: rgba(255,255,255,0.72);
+      font-size:30px;
+      font-weight:900;
+    }
+
+    /* Callouts (HTML boxes) */
+    .tideAbs .tideCallout{
+      position:absolute;
+      line-height:1.0;
+      user-select:none;
+      pointer-events:none;
+      color: rgba(255,255,255,0.92);
+    }
+    .tideAbs .tideCallout .tlbl{
+      font-size:20px;
+      font-weight:900;
+      color: rgba(255,255,255,0.72);
+      letter-spacing:.10em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      white-space: nowrap;
+    }
+    .tideAbs .tideCallout .tval{
+      font-size:32px;
+      font-weight:900;
+      color: rgba(255,255,255,0.95);
+      letter-spacing:-0.02em;
+      margin-bottom: 2px;
+      white-space: nowrap;
+    }
+    .tideAbs .tideCallout .tsub{
+      font-size:20px;
+      font-weight:900;
+      color: rgba(255,255,255,0.70);
+      letter-spacing:.06em;
+      white-space: nowrap;
+    }
+
+    .tideAbs .tideTL{ top: 14px; left: 12px; text-align:left; }
+    .tideAbs .tideTR{ top: 14px; right:12px; text-align:right; }
+    .tideAbs .tideBL{ bottom: 14px; left: 12px; text-align:left; }
+    .tideAbs .tideBR{ bottom: 14px; right:12px; text-align:right; }
+
+    /* Optional: bezel number nudge framework (match Galaxy14’s idea; safe if unused) */
+    body.deviceA9P11{
+      --tide_l1_x: -16px; --tide_l1_y: 3px;
+      --tide_l2_x: -2px;  --tide_l2_y: 5px;
+      --tide_l4_x: -2px;  --tide_l4_y: -10px;
+      --tide_r2_x: 2px;   --tide_r2_y: -10px;
+      --tide_r4_x: 2px;   --tide_r4_y: 5px;
+      --tide_r5_x: 16px;  --tide_r5_y: 5px;
+    }
+    #tide_l1{ transform: translate(var(--tide_l1_x), var(--tide_l1_y)); }
+    #tide_l2{ transform: translate(var(--tide_l2_x), var(--tide_l2_y)); }
+    #tide_l4{ transform: translate(var(--tide_l4_x), var(--tide_l4_y)); }
+    #tide_r2{ transform: translate(var(--tide_r2_x), var(--tide_r2_y)); }
+    #tide_r4{ transform: translate(var(--tide_r4_x), var(--tide_r4_y)); }
+    #tide_r5{ transform: translate(var(--tide_r5_x), var(--tide_r5_y)); }
+
+
+
+/* A9P_TIDE_LABEL_INSET_V1 — pull High/Low Tide labels inward so they don't clip */
+.tideAbs svg.tideClock text.lbl[x="180"][y="6"]{
+  transform: translateY(12px);
+  padding-left:4px;
+  padding-left:4px;
+  margin-left:4px;
+
+}
+.tideAbs svg.tideClock text.lbl[x="180"][y="366"]{
+  transform: translateY(-12px);
+}
+
+
+
+/* A9P_TIDE_RED_SQUARES_0_180_V1 — red squares at 0° and 180° in Tide bezel (overlay-safe) */
+/* Geometry note: ring outer edge is ~5.6% from top/bottom (r=152, stroke=16 in 360 viewBox). */
+.tideAbs::before,
+.tideAbs::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  width: 18px;
+  height: 18px;
+  background:#d93a2f;   /* match needle red */
+  border-radius: 3px;
+  z-index:3;            /* above SVG */
+  pointer-events:none;
+}
+
+/* 0° (top) */
+.tideAbs::before{
+  top: 7.9%;
+  transform: translate(-50%, -50%);
+}
+
+/* 180° (bottom) */
+.tideAbs::after{
+  top: 92.1%;
+  transform: translate(-50%, -50%);
+}
+
+/* A9P_WIND_AVG10_SUB_HIDE_V1 — hide TL subline permanently */
+#w_avg10_dir{ display:none !important; }
+
+
+/* A9P_WIND_E_INSET_V1 — nudge E label left slightly */
+.windAbs text.lbl[x="364"][y="186"]{
+  transform: translateX(-8px);
+}
+
+
+/* A9P_WIND_CALLOUT_DIGITS_SCALE_V1 — shrink wind corner values by 10% */
+.windAbs .wCorner .cvalue{
+  transform: scale(0.9);
+  transform-origin: center;
+}
+
+/* A9P_TIDE_STATE_LABEL_V1 — Rising / Falling above center value */
+.tideAbs .tideState{
+  fill: rgba(255,255,255,0.85);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+
+/* A9P_CURTEMP_TILE_V1 — render-only, 3-digit safe */
+.curTempTile{ position:relative; overflow:hidden; }
+.curTempAbs{ position:absolute; inset:0; padding:14px 16px; box-sizing:border-box; }
+
+.curTempAbs .ctTitle{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.85);
+  margin-bottom:6px;
+  white-space:nowrap;
+}
+
+.curTempAbs .ctMain{
+  position:absolute;
+  left:16px;
+  top:46px;
+  padding-right:34px;          /* reserve space so digits never overlap °F */
+  box-sizing:border-box;
+}
+.curTempAbs .ctValue{
+  transform-origin: left top;
+  transform: scaleX(0.94);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.06em;
+  position:relative;
+  z-index:1;
+  font-size:110px;              /* 3-digit safe */
+  font-weight:900;
+  letter-spacing: -0.06em;
+  line-height:0.95;
+}
+
+.curTempAbs .ctDec{
+  font-size: 0.55em;          /* half-size-ish */
+  vertical-align: baseline;   /* keep it on the text baseline */
+  margin-left: 0.10em;        /* comfortable gap (no hugging) */
+  line-height: 1;
+}
+
+
+.curTempAbs .ctMain{
+  position:absolute;
+  left:16px;
+  top:46px;
+}
+
+/* °F anchored to the top-right of the main digits (3-digit safe) */
+.curTempAbs .ctUnit{
+  position:absolute;
+  top:6px;
+  right:0;                    /* sit in the reserved padding area */
+  font-size:24px;
+  font-weight:900;
+  opacity:.75;
+  line-height:1;
+  z-index:3;
+}
+.curTempAbs .ctSide{
+  position:absolute;
+  right:12px;                 /* pull in slightly */
+top:52px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  align-items:flex-end;
+  text-align:right;
+}
+
+.curTempAbs .ctLbl{
+  font-size:16px;
+  font-weight:900;
+  letter-spacing:.10em;
+  opacity:.75;
+  white-space:nowrap;
+}
+
+/* A9P_CURTEMP_THSW_SQUEEZE_V1 */
+#ct_thsw{ transform: scaleX(0.92); transform-origin: right center; }
+
+.curTempAbs .ctValSm{
+  font-size:44px;               /* 3-digit safe */
+  font-weight:900;
+  letter-spacing:-0.02em;
+  line-height:1.0;
+}
+
+
+/* A9P_CURTEMP_POLISH_OVR_V1 — safe overrides (no JS impact) */
+
+/* 1) Prevent big digits from overlapping °F by reserving space inside ctMain */
+.curTempAbs .ctMain{
+  padding-right: 36px !important;   /* space for °F */
+  box-sizing: border-box !important;
+}
+
+/* Keep digits above anything (belt + suspenders) */
+.curTempAbs .ctValue{
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+/* Anchor °F into the reserved padding area (no left:100% overflow) */
+.curTempAbs .ctUnit{
+  left: auto !important;
+  margin-left: 0 !important;
+  right: 0 !important;
+  top: 6px !important;
+  z-index: 3 !important;
+}
+
+/* 2) THSW clipping: pull right column inward slightly */
+.curTempAbs .ctSide{
+  right: 10px !important;
+}
+
+/* 3) THSW-only squeeze (3-digit safe, doesn’t affect Heat Index) */
+#ct_thsw{
+  display: inline-block !important;
+  transform: scaleX(0.90) !important;
+  transform-origin: right center !important;
+}
+
+
+/* A9P_CURTEMP_POLISH_OVR_V2 — unit separation + THSW right-clip fix */
+
+/* Reserve space so big digits cannot collide with °F */
+.curTempAbs .ctMain{
+  padding-right: 44px !important;
+  box-sizing: border-box !important;
+}
+
+/* Make sure °F sits above digits and inside reserved space */
+.curTempAbs .ctUnit{
+  left: auto !important;
+  margin-left: 0 !important;
+  right: 0 !important;
+  top: 4px !important;
+  z-index: 10 !important;
+}
+
+/* Digits below °F (so they don’t “sit on top of” it) */
+.curTempAbs .ctValue{
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+/* Pull the side stack in slightly */
+.curTempAbs .ctSide{
+  right: 14px !important;   /* move °F further LEFT toward digits */
+}
+
+/* THSW-only: pull it left a touch without changing Heat Index */
+#ct_thsw{
+  display: inline-block !important;
+  transform: scaleX(0.90) !important;
+  transform-origin: right center !important;
+}
+
+
+/* A9P_CURTEMP_DEGREE_NUDGE_V1 — pull °F closer to big digits */
+.curTempAbs .ctUnit{
+  right: 20px !important;   /* move °F LEFT toward digits */   /* tighter: pulls °F ~4px closer again */   /* was 0; smaller = closer to digits */
+}
+
+
+/* A9P_CURTEMP_STACK_66PX_V1 — Wind Chill + THSW digits enlarged by 30% (44px → 66px per Scott rule) */
+.curTempAbs .ctValSm{
+  font-size: 66px !important;
+  line-height: 0.95 !important;
+}
+
+
+/* A9P_CURTEMP_HILO_GROUPED_V1 — grouped daily Hi / Lo along bottom */
+.curTempAbs .ctHiLoBar{
+  position:absolute;
+  left:16px;
+  bottom:8px;
+  font-size:24px;
+  font-weight:800;
+  letter-spacing:.04em;
+  color: rgba(255,255,255,0.75);
+  white-space:nowrap;
+}
+
+.curTempAbs .ctHiLoBar span span{
+  font-weight:900;
+  color: rgba(255,255,255,0.92);
+}
+
+
+/* A9P_LEFT2_METRICS_CSS_V1 — Left middle: Hum/DewPt + UV/Solar (whole numbers) */
+.met4Tile{ position:relative; overflow:hidden; }
+.met4Abs{ position:absolute; inset:0; padding:14px 16px; box-sizing:border-box; }
+
+.met4Title{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.80);
+  margin-bottom:10px;
+  white-space:nowrap;
+}
+
+.met4Grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  column-gap: 16px;
+  row-gap: 18px;
+  height: calc(100% - 34px);
+}
+
+.mCell{ text-align:left; }
+.mCell.right{ text-align:right; }
+
+.mLbl{
+  font-size: 18px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.68);
+  margin-bottom:6px;
+  white-space:nowrap;
+}
+
+
+/* A9P_LEFT2_LABEL_GAP_TIGHTEN_V1 — reduce label-to-digit gap in Left2 only */
+.met4Grid .mLbl{
+  margin-bottom: 2px !important;
+}
+
+.mVal{
+  font-weight:900;
+  letter-spacing:-0.02em;
+  line-height:0.95;
+  color: rgba(255,255,255,0.95);
+  white-space:nowrap;
+}
+
+/* Digit sizing by max digits (3/2/4) */
+.mVal.m3{ font-size:66px; }   /* up to 3 digits */
+.mVal.m2{ font-size:66px; }   /* 2 digits, keep visually consistent */
+.mVal.m4{ font-size: 66px; }   /* up to 4 digits */
+
+
+/* A9P_LEFT2_DIGITS_TALLER_SCALEY_V1 */
+/* A9P_LEFT2_DIGITS_TALLER_SCALEY_V1 — make Left2 value digits taller without moving labels
+   - NO horizontal scaling (3-digit safe)
+   - Uses transform (no reflow), so labels/grid stay put
+*/
+.met4Grid .mVal{
+  display:inline-block;
+  transform: translateY(8px) scaleY(1.24);
+  transform-origin: bottom;
+}
+.met4Grid .mCell.right .mVal{
+  transform-origin: right bottom;
+}
+
+/* Hum/Dew units are pseudo-elements; keep them from stretching with digits */
+#m_hum::after, #m_dew::after{
+  transform: scaleY(0.8065);
+  transform-origin: left top;
+  display:inline-block;
+}
+
+
+/* A9P_LEFT2_UNITS_CSSONLY_V1 — Hum/Dew units only; does NOT affect UV/Solar */
+#m_hum, #m_dew{
+  position: relative;
+  display: inline-block; /* keeps the pseudo-element anchored to the digits */
+}
+
+#m_hum::after{
+  content: "%";
+  position: absolute;
+  top: 2px;
+  right: -6px;          /* puts unit just outside digits without moving digits */
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  color: rgba(255,255,255,0.70);
+  line-height: 1;
+}
+
+
+/* A9P_LEFT2_HUM_PERCENT_RIGHT_NUDGE_V1 — force Hum % position using translateX (intuitive) */
+.met4Grid #m_hum::after{
+  right: -8px !important;                      /* keep anchor stable */
+  transform: translateX(3px) scaleY(0.8065) !important;  /* +X = move RIGHT */
+  transform-origin: left top !important;
+  display: inline-block !important;
+}
+#m_dew::after{
+  content: "°F";
+  position: absolute;
+  top: 2px;
+  right: -16px;          /* slightly wider for °F */
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  color: rgba(255,255,255,0.70);
+  line-height: 1;
+}
+
+
+/* A9P_LEFT2_UV_COLOR_CSS_V1 — color UV digits only (6+), official breakpoints */
+#m_uv.uvHigh     { color: #f5c542 !important; } /* High (6–7) amber */
+#m_uv.uvVeryHigh { color: #f28c28 !important; } /* Very High (8–10) orange */
+#m_uv.uvExtreme  { color: #d93a2f !important; } /* Extreme (11+) red (matches wind needle) */
+
+
+/* A9P_LEFT2_SOLAR_COLOR_CSS_V1 — color Solar digits only */
+#m_sol.solHigh     { color: #f5c542 !important; } /* Yellow (900–1100 W/m²) */
+#m_sol.solExtreme  { color: #f28c28 !important; } /* Orange (>1100 W/m²) */
+
+
+/* A9P_LEFT3_AIR_PRESSURE_CSS_V1 — Left bottom: AirLink + Pressure */
+.airPTile{ position:relative; overflow:hidden; }
+.airPAbs{ position:absolute; inset:0; padding:14px 16px; box-sizing:border-box; }
+
+.airPTitle{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.80);
+  margin-bottom:10px;
+  white-space:nowrap;
+}
+
+.airPTop{
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.aCell{ flex:1; text-align:left; }
+.aCell.right{ text-align:right; }
+
+.aLbl{
+  font-size:18px;              /* matches Conditions label sizing */
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.68);
+  margin-bottom:6px;
+  white-space:nowrap;
+}
+
+.aVal{
+  font-size:66px;
+  font-weight:900;
+  letter-spacing:-0.02em;
+  line-height:0.95;
+  color: rgba(255,255,255,0.95); /* default */
+  white-space:nowrap;
+}
+
+/* PM digit-only risk colors (EPA breakpoints, single red tier) */
+#pm25.pmY  { color:#f5c542 !important; }  /* Moderate */
+#pm25.pmO  { color:#f28c28 !important; }  /* USG */
+#pm25.pmR  { color:#d93a2f !important; }  /* Unhealthy+ */
+
+#pm10.pmY  { color:#f5c542 !important; }
+#pm10.pmO  { color:#f28c28 !important; }
+#pm10.pmR  { color:#d93a2f !important; }
+
+/* Pressure row */
+.airPBottom{
+  position:absolute;
+  left:16px;
+  right:16px;
+  bottom:12px;
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+}
+
+.pLbl{
+  font-size:22px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.68);
+  white-space:nowrap;
+}
+
+.pVal{
+  font-size:48px;
+  font-weight:900;
+  letter-spacing:-0.01em;
+  color: rgba(255,255,255,0.95);
+  white-space:nowrap;}
+
+.pUnit{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.06em;
+  color: rgba(255,255,255,0.70);}
+
+.pArrow{
+  margin-left:6px !important;
+  font-size:40px;
+  font-weight:900;
+  color: rgba(255,255,255,0.85);
+
+  text-shadow:
+    -1px 0   0 rgba(255,255,255,0.55),
+     1px 0   0 rgba(255,255,255,0.55),
+     0   -1px 0 rgba(255,255,255,0.55),
+     0    1px 0 rgba(255,255,255,0.55);
+}
+
+
+
+/* A9P_RIGHT1_RAIN_CSS_V1 — Right top: Rain (CSS only; match A9 typography scale) */
+.a9RainTile{ position:relative; overflow:hidden;   -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+.a9RainTile{ -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.a9RainAbs{ position:absolute; inset:0; padding:14px 16px; box-sizing:border-box; }
+
+.a9RainTitle{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.80);
+  margin-bottom:10px;
+  white-space:nowrap;
+}
+
+.a9RainGrid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap:16px;
+  row-gap:12px;
+}
+
+.a9RainCell{ min-width:0; }
+.a9RainCell.right{ text-align:right; }
+
+.a9RainLbl{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.68);
+  margin-bottom:6px;
+  white-space:nowrap;
+}
+.a9RainLblSmall{ font-size:16px; }
+
+/* TOP values: big + 4-digit safe (55.55) */
+.a9RainValTop{
+  font-size:66px;
+  font-weight:900;
+  letter-spacing:-0.02em;
+  line-height:0.95;
+  color: rgba(255,255,255,0.95);
+  white-space:nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* BOTTOM values: smaller */
+.a9RainValBot{
+  font-size:44px;
+  font-weight:900;
+  letter-spacing:-0.01em;
+  line-height:0.98;
+  color: rgba(255,255,255,0.90);
+  white-space:nowrap;
+  font-variant-numeric: tabular-nums;
+  display:inline-block;
+  transform: scale(1.36);
+  transform-origin: left top;
+}
+
+
+
+/* A9P_RIGHT1_RAIN_UNITS_CSS_V1 — inch symbol for Rain values */
+#a9_rain_today::after,
+#a9_rain_storm::after{
+  content:"\"";
+  font-size:20px;
+  font-weight:900;
+  vertical-align: super;
+  margin-left:6px;
+  color: rgba(255,255,255,0.75);
+}
+
+
+
+/* A9P_RIGHT1_RAIN_BOT_SCALE_ORIGIN_V1 — keep right column anchored */
+.a9RainCell.right #a9_rain_days{
+  transform-origin: right top;
+}
+
+
+
+/* A9P_RIGHT2_RAINACC_CSS_V1 — Right middle: Rain Accum (CSS only) */
+.a9RainAccTile{ position:relative; overflow:hidden; }
+.a9RainAccAbs{ position:absolute; inset:0; padding:14px 16px; box-sizing:border-box; }
+
+.a9RainAccTitle{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.80);
+  margin-bottom:10px;
+  white-space:nowrap;
+}
+
+.a9RainAccGrid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap:16px;
+  row-gap:12px;
+}
+
+.a9RainAccCell{ min-width:0; }
+.a9RainAccCell.right{ text-align:right; }
+
+.a9RainAccLbl{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.68);
+  margin-bottom:6px;
+  white-space:nowrap;
+}
+.a9RainAccLblSmall{ font-size:16px; }
+
+/* Top values: emphasized */
+.a9RainAccValTop{
+  font-size:66px;
+  font-weight:900;
+  letter-spacing:-0.02em;
+  line-height:0.95;
+  color: rgba(255,255,255,0.95);
+  white-space:nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bottom values: smaller */
+.a9RainAccValBot{
+  font-size:44px;
+  font-weight:900;
+  letter-spacing:-0.01em;
+  line-height:0.98;
+  color: rgba(255,255,255,0.90);
+  white-space:nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Units (CSS-only) */
+#a9_m_rain::after,
+#a9_y_rain::after{
+  content:"\"";
+  font-size:20px;
+  font-weight:900;
+  vertical-align: super;
+  margin-left:6px;
+  color: rgba(255,255,255,0.75);
+}
+
+#a9_m_norm::after,
+#a9_y_norm::after{
+  content:"%";
+  font-size:22px;
+  font-weight:900;
+  margin-left:6px;
+  color: rgba(255,255,255,0.75);
+}
+
+
+
+/* A9P_RIGHT3_THREAT_CSS_V2 — Right bottom: Threat/Conditions (CSS only) */
+.a9ThreatTile{ position:relative; overflow:hidden; }
+.a9ThreatAbs{ position:absolute; inset:0; padding:14px 16px 14px 8px;
+box-sizing:border-box; }
+
+.a9ThreatTitle{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.80);
+  margin-bottom:12px;
+  white-space:nowrap;
+}
+
+.a9ThreatRows{ display:flex; flex-direction:column; gap:14px; }
+
+.a9ThreatRow{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+  padding-top:8px;
+  padding-bottom:8px;
+  transform: scale(1.10);
+  transform-origin: left center;
+}
+
+.a9ThreatLab{
+  width:52px;
+  text-align:left;
+  font-size:16px;
+  font-weight:900;
+  letter-spacing:.10em;
+  color: rgba(255,255,255,0.68);
+  flex: 0 0 auto;
+}
+
+.a9ThreatDot{
+  width:18px;
+  height:18px;
+  border-radius:999px;
+  background: rgba(255,255,255,0.22);
+  border: 2px solid rgba(255,255,255,0.35);
+  flex: 0 0 auto;
+  display:block;
+  box-sizing:border-box;
+  position:relative;
+  left:-6px;
+}
+
+
+9px;
+  font-weight:900;
+  letter-spacing:.06em;
+  color: rgba(255,255,255,0.92);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width: 100%;
+  position:relative;
+  left:-6px;
+  display:inline-block;
+  transform: scaleX(0.78);
+  transform-origin: left center;
+}
+
+
+/* A9P_HEADER_CHIP_SCALE_V1 — make header chips visually larger without changing header height */
+.topbar .chip{
+  display:inline-flex;               /* ensure transform applies cleanly */
+  transform: scale(1.20);
+  transform-origin: left center;
+}
+
+
+
+/* A9P_HEADER_UPD_DOT_CSS_V2 — visible update dot (pulses when OK/WARN) */
+.updDot{
+  width:12px !important;
+  height:12px !important;
+  border-radius:999px;
+  display:inline-block !important;
+  margin-left:8px;
+  vertical-align:middle;
+  background:#f0b429; /* default yellow */
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.25) inset;
+  transform: scale(1.20);
+  transform-origin: center;
+}
+
+.updG{ background:#22c55e !important; }
+.updY{ background:#f0b429 !important; }
+.updR{ background:#dc2626 !important; }
+
+@keyframes updPulse{
+  0%{ opacity:1.0; }
+  50%{ opacity:0.25; }
+  100%{ opacity:1.0; }
+}
+.updPulse{ animation: updPulse 1.2s infinite; }
+
+</style>
+</head>
+
+<body class="deviceA9P11">
+  <div class="wrap">
+    <div class="topbar" style="margin-left:4px;">
+  <div class="meta" style="transform:translate(8px,6px);">
+    <div class="chip" id="hdr_time">--:--</div>
+    <div class="chip" id="hdr_date">--- --, ----</div>
+    <div class="chip" id="hdr_sunrise">Sunrise --:--</div>
+    <div class="chip" id="hdr_sunset">Sunset --:--</div>
+    <div class="chip" id="hdr_updated">Updated <span class="updDot updY updPulse" id="hdr_upd_dot" aria-label="Update status dot"></span></div>
+  </div>
+</div>
+
+    <div class="grid">
+      <!-- Left column -->
+      <div class="tile curTempTile" style="grid-column:1; grid-row:1;">
+  <div class="curTempAbs">
+  <div class="ctHiLoBar">
+    <span class="ctHi">Hi: <span id="ct_hi">--</span>°</span>
+    <span class="ctSep">&nbsp;&nbsp;</span>
+    <span class="ctLo">Lo: <span id="ct_lo">--</span>°</span>
+  </div>
+
+    <div class="ctTitle">Current Temps</div>
+
+    <div class="ctMain">
+      <div class="ctValue" id="ct_out">---</div>
+      <div class="ctUnit">°F</div>
+    </div>
+
+    <div class="ctSide">
+      <div class="ctStack">
+        <div class="ctLbl" id="ct_app_lbl">HEAT INDEX</div>
+        <div class="ctValSm" id="ct_app">---</div>
+      </div>
+      <div class="ctStack">
+        <div class="ctLbl">THSW</div>
+        <div class="ctValSm" id="ct_thsw">---</div>
+      </div>
+    </div>
+  </div>
+</div>
+      <div class="tile met4Tile" style="grid-column:1; grid-row:2;">
+  <div class="met4Abs">
+    <div class="met4Title">Conditions</div>
+
+    <div class="met4Grid">
+      <div class="mCell">
+        <div class="mLbl">Hum</div>
+        <div class="mVal m3" id="m_hum">---</div>
+      </div>
+      <div class="mCell right">
+        <div class="mLbl">Dew Pt</div>
+        <div class="mVal m3" id="m_dew">---</div>
+      </div>
+
+      <div class="mCell">
+        <div class="mLbl">UV</div>
+        <div class="mVal m2" id="m_uv">--</div>
+      </div>
+      <div class="mCell right">
+        <div class="mLbl">Solar</div>
+        <div class="mVal m4" id="m_sol">----</div>
+      </div>
+    </div>
+  </div>
+</div>
+      <div class="tile airPTile" style="grid-column:1; grid-row:3;">
+  <div class="airPAbs">
+    <div class="airPTitle">Air & Pressure</div>
+
+    <div class="airPTop">
+      <div class="aCell">
+        <div class="aLbl">PM2.5</div>
+        <div class="aVal" id="pm25">--</div>
+      </div>
+      <div class="aCell right">
+        <div class="aLbl">PM10</div>
+        <div class="aVal" id="pm10">--</div>
+      </div>
+    </div>
+
+    <div class="airPBottom">
+      <div class="pLbl">Pressure</div>
+      <div class="pVal">
+        <span id="p_val">--.--</span><span class="pUnit"> inHg</span>
+        <span class="pArrow" id="p_arrow">--</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+      <!-- Center -->
+      <div class="centerStack">
+        <div class="tile windTile">
+  <div class="windAbs">
+<div class="wCorner cTL">
+  <div class="clabel">AVG 10</div>
+  <div class="cvalue" id="w_avg10">--</div>
+  <div class="csub" id="w_avg10_dir">--</div>
+</div>
+
+<div class="wCorner cTR">
+  <div class="clabel">AVG 10</div>
+  <div class="cvalue" id="w_gust">--</div>
+  <div class="csub">&nbsp;</div>
+</div>
+
+<div class="wCorner cBL">
+  <div class="clabel">MAX 10</div>
+  <div class="cvalue" id="w_max10">--</div>
+  <div class="csub">&nbsp;</div>
+</div>
+
+<div class="wCorner cBR">
+  <div class="clabel">MAX DAY</div>
+  <div class="cvalue" id="w_maxday">--</div>
+  <div class="csub" id="w_maxday_time">--</div>
+</div>
+
+<svg class="compass" viewBox="0 0 360 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Wind direction compass">
+  <circle class="ring" cx="180" cy="180" r="150"></circle>
+
+  <g>
+    <line class="tick" x1="180" y1="33" x2="180" y2="48"/>
+    <g transform="rotate(15 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(30 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(45 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+    <g transform="rotate(60 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(75 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(90 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+    <g transform="rotate(105 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(120 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(135 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+    <g transform="rotate(150 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(165 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(180 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+    <g transform="rotate(195 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(210 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(225 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+    <g transform="rotate(240 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(255 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(270 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+    <g transform="rotate(285 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(300 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(315 180 180)"><line class="tickMajor" x1="180" y1="30" x2="180" y2="52"/></g>
+    <g transform="rotate(330 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+    <g transform="rotate(345 180 180)"><line class="tick" x1="180" y1="33" x2="180" y2="48"/></g>
+  </g>
+
+  <text class="lbl" x="180" y="6" text-anchor="middle">N</text>
+  <g transform="rotate(45 180 180)"><text class="lbl" x="180" y="6" text-anchor="middle">NE</text></g>
+  <text class="lbl" x="364" y="186" text-anchor="middle">E</text>
+  <g transform="rotate(135 180 180)"><text class="lbl" x="180" y="6" text-anchor="middle">SE</text></g>
+  <text class="lbl" x="180" y="366" text-anchor="middle">S</text>
+  <g transform="rotate(225 180 180)"><text class="lbl" x="180" y="6" text-anchor="middle">SW</text></g>
+  <text class="lbl" x="-10"  y="186" text-anchor="middle">W</text>
+  <g transform="rotate(315 180 180)"><text class="lbl" x="180" y="6" text-anchor="middle">NW</text></g>
+
+  <g id="w_needle" transform="rotate(0 180 180)">
+    <polygon class="needle" points="180,44 170,96 180,86 190,96"/>
+    <polygon class="needle" points="180,44 180,86 182,86"/>
+  </g>
+
+  <text class="dir" x="180" y="120" text-anchor="middle" id="w_dir_txt">--</text>
+  <text class="speed" x="180" y="190" text-anchor="middle" dominant-baseline="middle" id="w_speed_txt">--</text>
+  <text class="unit" x="180" y="260" text-anchor="middle">MPH</text>
+</svg>
+  </div>
+</div>
+        <div class="tile tideTile">
+  <div class="tideAbs">
+    <!-- A9P_TIDE_FROM_G14_SCAFFOLD_V1 — Tide callouts + clock (NO JS yet) -->
+
+    <div class="tideCallout tideTL">
+      <div class="tlbl" id="tide_next_lbl">Next</div>
+      <div class="tval" id="tide_next_time">--:--</div>
+      <div class="tsub" id="tide_next_ht">--</div>
+    </div>
+
+    <div class="tideCallout tideTR">
+      <div class="tlbl" id="tide_next2_lbl">Next</div>
+      <div class="tval" id="tide_next2_time">--:--</div>
+      <div class="tsub" id="tide_next2_ht">--</div>
+    </div>
+
+    <div class="tideCallout tideBL">
+      <div class="tlbl" id="tide_since_lbl">Since</div>
+      <div class="tval" id="tide_since_val">--:--</div>
+      <div class="tsub" id="tide_since_sub"></div>
+    </div>
+
+    <div class="tideCallout tideBR">
+      <div class="tlbl" id="tide_range_lbl">Range</div>
+      <div class="tval" id="tide_range_val">--.-'</div>
+      <div class="tsub" id="tide_range_sub"></div>
+    </div>
+
+    <svg class="tideClock" viewBox="0 0 360 360" role="img" aria-label="Tide clock scaffold">
+      <circle class="ring" cx="180" cy="180" r="152"></circle>
+
+      <!-- tide clock numbers (replace tick marks) -->
+      <g class="tideNums">
+        <text class="tideNum" id="tide_r5" x="222" y="78"  text-anchor="middle">5</text>
+        <text class="tideNum" id="tide_r4" x="279" y="121" text-anchor="middle">4</text>
+        <text class="tideNum" id="tide_r3" x="302" y="192" text-anchor="middle">3</text>
+        <text class="tideNum" id="tide_r2" x="279" y="268" text-anchor="middle">2</text>
+        <text class="tideNum" id="tide_r1" x="232" y="302" text-anchor="middle">1</text>
+
+        <text class="tideNum" id="tide_l5" x="128" y="302" text-anchor="middle">5</text>
+        <text class="tideNum" id="tide_l4" x="81"  y="268" text-anchor="middle">4</text>
+        <text class="tideNum" id="tide_l3" x="58"  y="192" text-anchor="middle">3</text>
+        <text class="tideNum" id="tide_l2" x="81"  y="121" text-anchor="middle">2</text>
+        <text class="tideNum" id="tide_l1" x="138" y="78"  text-anchor="middle">1</text>
+      </g>
+
+      <text class="lbl" x="180" y="6"   text-anchor="middle">High Tide</text>
+      <text class="lbl" x="364" y="186" text-anchor="middle">Ebb</text>
+      <text class="lbl" x="-10"  y="186" text-anchor="middle">Flow</text>
+      <text class="lbl" x="180" y="366" text-anchor="middle">Low Tide</text>
+
+      <g id="tide_hand" transform="rotate(0 180 180)">
+        <polygon class="tideNeedle" points="180,44 170,96 180,86 190,96"/>
+        <polygon class="tideNeedle" points="180,44 180,86 182,86"/>
+      </g>
+
+      <text class="tideState" id="tide_state_txt" x="180" y="136" text-anchor="middle">--</text>
+      <text class="tideMain" x="180" y="190" text-anchor="middle" dominant-baseline="middle" id="tide_main_txt">--</text>
+      <text class="tideFeet" x="242" y="162" text-anchor="start">'</text>
+
+      <text class="tideSub" x="180" y="238" text-anchor="middle" id="tide_sub_txt">
+        <tspan id="tide_time_line" x="180" dy="0">--:--</tspan>
+        <tspan id="tide_to_line"   x="180" dy="22">To --</tspan>
+      </text>
+    </svg>
+  </div>
+</div>
+      </div>
+
+      <!-- Right column -->
+      <div class="tile a9RainTile" style="grid-column:3; grid-row:1;">
+  <div class="a9RainAbs">
+    <div class="a9RainTitle">Rain</div>
+
+    <div class="a9RainGrid">
+      <!-- TOP ROW (primary) -->
+      <div class="a9RainCell">
+        <div class="a9RainLbl">Today</div>
+        <div class="a9RainValTop" id="a9_rain_today">--.--</div>
+      </div>
+      <div class="a9RainCell right">
+        <div class="a9RainLbl">Rate In/Hr</div>
+        <div class="a9RainValTop" id="a9_rain_rate">--.--</div>
+      </div>
+
+      <!-- BOTTOM ROW (secondary) -->
+      <div class="a9RainCell">
+        <div class="a9RainLbl a9RainLblSmall">Storm</div>
+        <div class="a9RainValBot" id="a9_rain_storm">--.--</div>
+      </div>
+      <div class="a9RainCell right">
+        <div class="a9RainLbl a9RainLblSmall">Days Since</div>
+        <div class="a9RainValBot" id="a9_rain_days">--</div>
+      </div>
+    </div>
+  </div>
+</div>
+      <div class="tile a9RainAccTile" style="grid-column:3; grid-row:2;">
+  <div class="a9RainAccAbs">
+    <div class="a9RainAccTitle">Rain Accum</div>
+
+    <div class="a9RainAccGrid">
+      <!-- TOP ROW -->
+      <div class="a9RainAccCell">
+        <div class="a9RainAccLbl">Month</div>
+        <div class="a9RainAccValTop" id="a9_m_rain">--.--</div>
+      </div>
+      <div class="a9RainAccCell right">
+        <div class="a9RainAccLbl">Year</div>
+        <div class="a9RainAccValTop" id="a9_y_rain">--.--</div>
+      </div>
+
+      <!-- BOTTOM ROW -->
+      <div class="a9RainAccCell">
+        <div class="a9RainAccLbl a9RainAccLblSmall">% Normal</div>
+        <div class="a9RainAccValBot" id="a9_m_norm">--</div>
+      </div>
+      <div class="a9RainAccCell right">
+        <div class="a9RainAccLbl a9RainAccLblSmall">% Normal</div>
+        <div class="a9RainAccValBot" id="a9_y_norm">--</div>
+      </div>
+    </div>
+  </div>
+</div>
+      <div class="tile a9ThreatTile" style="grid-column:3; grid-row:3;">
+  <div class="a9ThreatAbs">
+    <div class="a9ThreatTitle">Threat / Conditions</div>
+
+    <div class="a9ThreatRows">
+      <!-- Row 1: Overall -->
+      <div class="a9ThreatRow" id="tr_overall_row">
+        
+        <div class="a9ThreatLab">NOW</div><div class="a9ThreatDot" id="tr_overall_dot" aria-label="Overall status dot"></div>
+        <div class="a9ThreatText" id="tr_overall_txt">CLEAR</div>
+      </div>
+
+      <!-- Row 2: NWS -->
+      <div class="a9ThreatRow" id="tr_nws_row">
+        
+        <div class="a9ThreatLab">NWS</div><div class="a9ThreatDot" id="tr_nws_dot" aria-label="NWS alert dot"></div>
+        <div class="a9ThreatText" id="tr_nws_txt">NONE</div>
+      </div>
+
+      <!-- Row 3: MRW -->
+      <div class="a9ThreatRow" id="tr_mrw_row">
+        
+        <div class="a9ThreatLab">MRW</div><div class="a9ThreatDot" id="tr_mrw_dot" aria-label="MRW conditions dot"></div>
+        <div class="a9ThreatText" id="tr_mrw_txt">MRW: CLEAR</div>
+      </div>
+
+      <!-- Row 4: Lightning (reserved) -->
+      <div class="a9ThreatRow" id="tr_ltg_row">
+        
+        <div class="a9ThreatLab">LTG</div><div class="a9ThreatDot" id="tr_ltg_dot" aria-label="Lightning dot"></div>
+        <div class="a9ThreatText" id="tr_ltg_txt">NO LIGHTNING</div>
+      </div>
+    </div>
+  </div>
+</div>
+    </div>
+  </div>
+
+<script>
+// MRW_ALERT_TRUNC15_V1 — header alert max 15 chars (incl spaces)
+function mrwAlert15(s){
+  if(s===undefined||s===null) return "";
+  s=String(s).trim();
+  if(!s) return "";
+  return (s.length<=15)? s : s.slice(0,15).trim();
+}
+
+/* A9P_WIND_LIVE_V1 — LAN-only wind wiring */
+(function(){
+  const POLL_MS = 2500;
+
+  function $(id){ return document.getElementById(id); }
+  function setText(id, v){
+    const el = $(id);
+    if (!el) return;
+    if (v === undefined || v === null) return;
+    const t = String(v);
+    if (t === "" || t === "undefined" || t === "null") return;
+    el.textContent = t;
+  }
+
+  function num(x){
+    if (x === undefined || x === null) return null;
+    const n = Number(x);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function pad2(n){ return (n<10?'0':'') + n; }
+  function fmtTime(ts){
+    if (!ts) return "--";
+    // Accept ISO string or epoch seconds/ms
+    try{
+      let d;
+      if (typeof ts === "number"){
+        d = new Date(ts > 1e12 ? ts : ts*1000);
+      } else {
+        d = new Date(ts);
+      }
+      if (isNaN(d.getTime())) return "--";
+      return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+    }catch(e){ return "--"; }
+  }
+
+  function degToCardinal(deg){
+    const d = ((deg % 360) + 360) % 360;
+    const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+    return dirs[Math.round(d/22.5) % 16];
+  }
+
+  function rotateNeedle(deg){
+    const g = $("w_needle");
+    if (!g) return;
+    const d = ((deg % 360) + 360) % 360;
+    g.setAttribute("transform", `rotate(${d} 180 180)`);
+  }
+
+  function pick(obj, keys){
+    for (const k of keys){
+      if (!obj) continue;
+      const v = obj[k];
+      if (v !== undefined && v !== null) return v;
+    }
+    return null;
+  }
+
+  function extractWind(payload){
+    // Try several shapes (wind.json or computed_rt.json)
+    const root = payload || {};
+    const c = root.computed || root.rt || root.current || root;
+
+    const w = root.wind || c.wind || c.w || c;
+
+    // Speed (mph)
+    const speed = num(pick(w, ["speed_mph","wind_speed_mph","windSpeed_mph","windSpeed","speed","wind_speed"]));
+
+    // Gust (mph)
+    const gust = num(pick(w, ["gust_mph","wind_gust_mph","windGust_mph","gust","windGust"]));
+
+    // Direction (degrees from)
+    const dirDeg = num(pick(w, ["dir_deg","wind_dir_deg","windDir_deg","windDir","dir","direction_deg","windDirection"]));
+
+    // Optional cardinal string
+    const dirTxt = pick(w, ["dir_txt","dir_text","direction","wind_dir_txt","windDirText"]);
+
+    // Avg 10m (mph) + optional dir text
+    const avg10 = num(pick(w, ["avg_10m_mph","avg10_mph","wind_avg_10m_mph","avg_10_mph","avg10"]));
+    const avg10Dir = pick(w, ["avg_10m_dir_deg","avg10_dir","avg_10m_dir","avg10_dir_txt","avg10_dir_text"]);
+
+    // Max gust 10m
+    const max10 = num(pick(w, ["max_gust_10m_mph","max10_mph","wind_max_gust_10m_mph","max_gust_10m","max10"]));
+
+    // Max day gust + time
+    const maxDay = num(pick(w, ["max_day_mph","max_gust_day_mph","maxday_mph","max_gust_day","maxday"]));
+    const maxDayTs = pick(w, ["max_day_ts","maxday_ts","max_gust_day_ts","maxday_time_ts","max_day_time"]);
+
+    // Also check extremes payloads sometimes nested
+    const ex = root.extremes || c.extremes || null;
+    let maxDay2 = null, maxDayTs2 = null;
+    try{
+      const day = ex && ex.wind_gust_mph && (ex.wind_gust_mph.day || ex.wind_gust_mph);
+      if (day){
+        maxDay2 = num(pick(day, ["hi","max","value"]));
+        maxDayTs2 = pick(day, ["hi_ts","ts","time"]);
+      }
+    }catch(e){}
+
+    return {
+      speed, gust, dirDeg, dirTxt,
+      avg10, avg10Dir,
+      max10,
+      maxDay: (maxDay != null ? maxDay : maxDay2),
+      maxDayTs: (maxDayTs != null ? maxDayTs : maxDayTs2)
+    };
+  }
+
+  async function fetchJSON(url){
+    const r = await fetch(url, {cache:"no-store"});
+    if (!r.ok) throw new Error(url + " " + r.status);
+    return await r.json();
+  }
+
+  async function poll(){
+    try{
+      let data = null;
+
+      // Prefer wind.json if present
+      try{
+        data = await fetchJSON("/data/wind.json");
+      }catch(e1){
+        data = await fetchJSON("/data/computed_rt.json");
+      }
+
+      const w = extractWind(data);
+
+      if (w.speed != null) setText("w_speed_txt", Math.round(w.speed));
+      if (w.dirDeg != null){
+        // Show degrees (or change later to cardinal if desired)
+        setText("w_dir_txt", Math.round(w.dirDeg) + "°");
+        rotateNeedle(w.dirDeg);
+      } else if (w.dirTxt){
+        setText("w_dir_txt", String(w.dirTxt));
+      }
+
+      if (w.avg10 != null) setText("w_avg10", Math.round(w.avg10));
+      if (w.avg10Dir){
+        setText("w_avg10_dir", "");
+      } else if (w.dirDeg != null){
+        setText("w_avg10_dir", "");
+      }
+
+      if (w.avg10Dir != null) setText("w_gust", degToCardinal(w.avg10Dir)); else setText("w_gust","--");
+      if (w.max10 != null) setText("w_max10", Math.round(w.max10));
+      if (w.maxDay != null) setText("w_maxday", Math.round(w.maxDay));
+      if (w.maxDayTs) setText("w_maxday_time", fmtTime(w.maxDayTs));
+
+      // Fallback: Max Day from /data/extremes.json (common MRW truth source)
+      if (w.maxDay == null){
+        try{
+          const ex = await fetchJSON("/data/extremes.json");
+          const day = ex && ex.extremes && ex.extremes.wind_gust_mph && ex.extremes.wind_gust_mph.day;
+          if (day){
+            const hi = Number(day.hi);
+            if (Number.isFinite(hi)) setText("w_maxday", Math.round(hi));
+            if (day.hi_ts) setText("w_maxday_time", fmtTime(day.hi_ts));
+          }
+        }catch(e2){}
+      }
+
+    }catch(e){
+      // no-op: keep last good values (sticky)
+      // console.log("wind poll err", e);
+    }
+  }
+
+  setInterval(poll, POLL_MS);
+  poll();
+})();
+
+// A9P_TIDE_LOADER_V1 — load external Tide JS (avoids large in-place script edits)
+(function(){
+  try{
+    var sc=document.createElement("script");
+    sc.src="/ui/a9p_tide.js?ts="+Date.now();
+    sc.defer=true;
+    document.head.appendChild(sc);
+  }catch(e){}
+})();
+
+
+/* A9P_CURTEMP_LIVE_V1 — render-only temps */
+(function(){
+  const POLL_MS = 2500;
+  
+  // === A9P_CURTEMP_FAKE105_V1 ===
+  // TEMP visual test for 3-digit sizing. Set to null to return to live.
+  const FAKE_OUT  = null;   // big temp
+  const FAKE_APP  = 123;   // Heat Index / Wind Chill value
+  const FAKE_THSW = 110;   // THSW value
+function $(id){ return document.getElementById(id); }
+  function setText(id, v){
+    const el = $(id);
+    if (!el || v === undefined || v === null) return;
+    const t = String(v);
+    if (!t || t === "null" || t === "undefined") return;
+    el.textContent = t;
+  }
+  function num(x){
+    if (x === undefined || x === null) return null;
+    const n = Number(x);
+    return Number.isFinite(n) ? n : null;
+  }
+  async function fetchJSON(url){
+    const r = await fetch(url, {cache:"no-store"});
+    if (!r.ok) throw new Error(url + " " + r.status);
+    return await r.json();
+  }
+  async function poll(){
+    try{
+      
+      // A9P_CURTEMP_FAKE105_ACTIVE — render-only override for layout testing
+      if (FAKE_OUT !== null){
+        setText("ct_out", FAKE_OUT);
+        setText("ct_app_lbl", "HEAT INDEX");
+        setText("ct_app", FAKE_APP);
+        setText("ct_thsw", FAKE_THSW);
+        return;
+      }
+const data = await fetchJSON("/data/computed_rt.json");
+      const c = data.computed || data.rt || data.current || data;
+      const out   = num((data.inputs && data.inputs.temp_f) ?? c.temp_f ?? c.out_temp_f ?? c.outTemp_f);
+
+const heatx = num(c.heat_index_f ?? c.heatIndex_f);
+      const wchill= num(c.wind_chill_f ?? c.windChill_f);
+      const thsw  = num(c.thsw_f ?? c.thsw);
+
+      if (out != null) 
+if (out != null) {
+  const v = (Math.round(out * 10) / 10).toFixed(1);
+  const parts = v.split(".");
+  const html = parts.length === 2
+    ? parts[0] + '<span class="ctDec">.' + parts[1] + '</span>'
+    : v;
+  document.getElementById("ct_out").innerHTML = html;
+}
+
+
+      // 50°F threshold — render-only selection (no math)
+      if (out != null && out < 50 && wchill != null){
+        setText("ct_app_lbl", "WIND CHILL");
+        setText("ct_app", Math.round(wchill));
+      } else if (heatx != null){
+        setText("ct_app_lbl", "HEAT INDEX");
+        setText("ct_app", Math.round(heatx));
+      }
+
+      if (thsw != null) setText("ct_thsw", Math.round(thsw));
+    }catch(e){}
+  }
+  setInterval(poll, POLL_MS);
+  poll();
+})();
+
+
+/* A9P_CURTEMP_HILO_JS_V1 — wire daily Hi / Lo (grouped) */
+(function(){
+  async function pollHiLo(){
+    try{
+      const r = await fetch("/data/extremes.json", {cache:"no-store"});
+      if (!r.ok) return;
+      const ex = await r.json();
+      const day = ex && ex.extremes && ex.extremes.temp_f && ex.extremes.temp_f.day;
+      if (!day) return;
+
+      if (day.hi !== undefined){
+        const el = document.getElementById("ct_hi");
+        if (el) el.textContent = Math.round(day.hi);
+      }
+      if (day.lo !== undefined){
+        const el = document.getElementById("ct_lo");
+        if (el) el.textContent = Math.round(day.lo);
+      }
+    }catch(e){}
+  }
+  pollHiLo();
+  setInterval(pollHiLo, 2500);
+})();
+
+
+/* A9P_LEFT2_METRICS_JS_V1 — render-only wiring for Left 2 */
+(function(){
+  const POLL_MS = 2500;
+
+  function $(id){ return document.getElementById(id); }
+  function setText(id, v){
+    const el = $(id);
+    if (!el || v === undefined || v === null) return;
+    const t = String(v);
+    if (!t || t === "null" || t === "undefined") return;
+    el.textContent = t;
+  }
+  function num(x){
+    if (x === undefined || x === null) return null;
+    const n = Number(x);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  async function fetchJSON(url){
+    const r = await fetch(url, {cache:"no-store"});
+    if (!r.ok) throw new Error(url + " " + r.status);
+    return await r.json();
+  }
+
+  async function poll(){
+    try{
+      const c = await fetchJSON("/data/computed_rt.json?ts=" + Date.now());
+      const hum = num(c?.inputs?.humidity_pct);
+      const sol = num(c?.inputs?.solar_wm2);
+      const uv  = null; // UV comes from now.json (uv_index)
+// dewpoint comes from now.json (as in Galaxy14)
+      let dew = null;
+      try{
+        const n = await fetchJSON("/data/now.json?ts=" + Date.now());
+                dew = num(n?.now?.dewpoint_f);
+
+      
+                var uv_now = num(n?.now?.uv_index);
+}catch(e2){}
+
+      if (hum != null) setText("m_hum", Math.round(hum));
+      if (dew != null) setText("m_dew", Math.round(dew));
+      if (typeof uv_now !== "undefined" && uv_now != null){
+        const u = (Math.round(uv_now * 10) / 10).toFixed(1);
+        setText("m_uv", u);
+
+        // Color digits only when UV >= 6 (official categories)
+        const el = document.getElementById("m_uv");
+        if (el){
+          el.classList.remove("uvHigh","uvVeryHigh","uvExtreme");
+          if (u >= 11) el.classList.add("uvExtreme");
+          else if (u >= 8) el.classList.add("uvVeryHigh");
+          else if (u >= 6) el.classList.add("uvHigh");
+        }
+      }if (sol != null){
+        const v = Math.round(sol);
+        setText("m_sol", v);
+
+        const el = document.getElementById("m_sol");
+        if (el){
+          el.classList.remove("solHigh","solExtreme");
+          if (v > 1100) el.classList.add("solExtreme");
+          else if (v >= 900) el.classList.add("solHigh");
+        }
+      }}catch(e){}
+  }
+
+  setInterval(poll, POLL_MS);
+  poll();
+})();
+
+
+/* A9P_LEFT3_AIR_PRESSURE_JS_V1 — render-only wiring */
+(function(){
+  const POLL_MS = 2500;
+
+  function $(id){ return document.getElementById(id); }
+  function setText(id, v){
+    const el = $(id);
+    if (!el || v === undefined || v === null) return;
+    const t = String(v);
+    if (!t || t === "null" || t === "undefined") return;
+    el.textContent = t;
+  }
+  function num(x){
+    if (x === undefined || x === null) return null;
+    const n = Number(x);
+    return Number.isFinite(n) ? n : null;
+  }
+  async function fetchJSON(url){
+    const r = await fetch(url, {cache:"no-store"});
+    if (!r.ok) throw new Error(url + " " + r.status);
+    return await r.json();
+  }
+
+  function setPMColor(el, value, kind){
+    if (!el) return;
+    el.classList.remove("pmY","pmO","pmR");
+    if (value == null) return;
+
+    // EPA breakpoints, single red tier (digits only)
+    if (kind === "pm25"){
+      if (value >= 55.5) el.classList.add("pmR");
+      else if (value >= 35.5) el.classList.add("pmO");
+      else if (value >= 12.1) el.classList.add("pmY");
+    } else { // pm10
+      if (value >= 255) el.classList.add("pmR");
+      else if (value >= 155) el.classList.add("pmO");
+      else if (value >= 55) el.classList.add("pmY");
+    }
+  }
+
+  async function poll(){
+    try{
+      const a = await fetchJSON("/data/air.json?ts=" + Date.now());
+      const pm25 = num(a?.air?.pm_2p5_ugm3);
+      const pm10 = num(a?.air?.pm_10_ugm3);
+
+      if (pm25 != null) setText("pm25", Math.round(pm25));
+      if (pm10 != null) setText("pm10", Math.round(pm10));
+
+      setPMColor($("pm25"), pm25, "pm25");
+      setPMColor($("pm10"), pm10, "pm10");
+
+      const c = await fetchJSON("/data/computed_rt.json?ts=" + Date.now());
+      const p_inhg = num(c?.inputs?.pressure_inhg);
+      const arrow = c?.computed?.pressure_trend_arrow;
+
+      if (p_inhg != null) setText("p_val", (Math.round(p_inhg * 100) / 100).toFixed(2));
+      if (arrow != null) setText("p_arrow", arrow);
+
+    }catch(e){}
+  }
+
+  setInterval(poll, POLL_MS);
+  poll();
+})();
+
+</script>
+
+
+<script>
+// A9P_RAIN_LOADER_V1 — load external Rain JS (avoids editing main script)
+(function(){
+  try{
+    var sc=document.createElement("script");
+    sc.src="/ui/a9p_rain.js?ts="+Date.now();
+    sc.defer=true;
+    document.head.appendChild(sc);
+  }catch(e){}
+})();
+</script>
+
+
+<script>
+// A9P_RAIN_ACCUM_LOADER_V1 — load external Rain Accum JS
+(function(){
+  try{
+    var sc=document.createElement("script");
+    sc.src="/ui/a9p_rain_accum.js?ts="+Date.now();
+    sc.defer=true;
+    document.head.appendChild(sc);
+  }catch(e){}
+})();
+</script>
+
+
+<script>
+// A9P_THREAT_LOADER_V1 — load external Threat JS
+(function(){
+  try{
+    var sc=document.createElement("script");
+    sc.src="/ui/a9p_threat.js?ts="+Date.now();
+    sc.defer=true;
+    document.head.appendChild(sc);
+  }catch(e){}
+})();
+</script>
+
+
+<script>
+// A9P_HEADER_LOADER_V1 — load external header JS (time/date/sunrise/sunset/updated)
+(function(){
+  try{
+    var sc=document.createElement("script");
+    sc.src="/ui/a9p_header.js?ts="+Date.now();
+    sc.defer=true;
+    document.head.appendChild(sc);
+  }catch(e){}
+})();
+</script>
+
+</body>
+</html>

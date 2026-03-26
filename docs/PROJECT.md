@@ -93,6 +93,7 @@ Browser: player/mrms/, player/kclx/, etc.
 | `basemap/src/` | TIGER, Natural Earth shapefiles |
 | `docs/pi-wx/` | pi-wx operational notes (WeeWX AirLink patch, etc.) |
 | `patches/pi-wx/` | Unified diffs for pi-wx (re-apply after WeeWX extension upgrades) |
+| `pi-wx-dashboard/` | Galaxy A9+ LAN phone UI — **`galaxy-a9p11/`**; deploy: `bin/deploy_pi_wx_galaxy_a9p11.sh` → `pi-wx:~/dashboard/ui/` |
 
 ---
 

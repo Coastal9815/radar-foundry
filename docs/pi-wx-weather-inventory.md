@@ -14,6 +14,7 @@ Generated from live exploration.
 | **Dashboard** | Custom `gen_*.sh` scripts in `/home/scott/dashboard/bin/` — produce JSON for MRW |
 | **HTTP** | Nginx serves `/data/*` → symlinked to `/home/scott/dashboard/data/` |
 | **AirLink (WeeWX)** | Davis AirLink at `192.168.1.167`; `user.airlink` injects PM into loop/archive. Timeout / poll tuning and `airlink.py` patch: **`docs/pi-wx/AIRLINK_WEEWX_PATCH.md`**, patch file **`patches/pi-wx/weewx-airlink-poll-interval.patch`**. |
+| **Galaxy A9+ UI** | `http://192.168.2.174/ui/galaxyA9p11.html` — static files in `~/dashboard/ui/`. **Source of truth in git:** `radar-foundry/pi-wx-dashboard/galaxy-a9p11/`; deploy: **`bin/deploy_pi_wx_galaxy_a9p11.sh`**. |
 
 **Data flow:** WLL → gen_now.sh → now.json → gen_wind.sh, gen_extremes.sh, gen_computed_rt.sh → wind.json, extremes.json, computed_rt.json. Extremes also sync from WeeWX archive via `sync_weewx_wind_gust_extremes.py`.
 
