@@ -40,9 +40,21 @@
       if (rate  != null) setTextSticky("a9_rain_rate",  rate);
       if (storm != null) setTextSticky("a9_rain_storm", storm);
 
-      const k = await fetchJSON("/data/computed_rt.json?ts=" + Date.now());
-      const cc2 = (k && k.computed) ? k.computed : {};
-      if (cc2.rain_days_since_stop != null) setTextSticky("a9_rain_days", Math.round(cc2.rain_days_since_stop));
+      // Days Since Rain — same rules as player/master-mrw/modules/rain-current.js
+      let days = null;
+      try {
+        const nowJ = await fetchJSON("/data/now.json?ts=" + Date.now());
+        const n = (nowJ && nowJ.now) ? nowJ.now : {};
+        days = num(x.days_since_rain ?? x.daySinceRain ?? x.day_since_rain ?? n.days_since_rain ?? n.daySinceRain);
+        const todayIn = Number(x.today_in ?? x.rain_today ?? x.rain_today_in ?? n.rain_today ?? n.rain_today_in ?? 0);
+        if (todayIn > 0.001) {
+          days = 0;
+        } else if (days == null && x.storm_last_end_at != null) {
+          const endTs = Number(x.storm_last_end_at);
+          if (Number.isFinite(endTs)) days = Math.floor((Date.now() / 1000 - endTs) / 86400);
+        }
+      } catch (_) { /* keep sticky */ }
+      if (days != null && Number.isFinite(days)) setTextSticky("a9_rain_days", Math.round(days));
     }catch(e){
       // sticky
     }

@@ -355,10 +355,6 @@
   transform: translate(-50%, -50%);
 }
 
-/* A9P_WIND_AVG10_SUB_HIDE_V1 — hide TL subline permanently */
-#w_avg10_dir{ display:none !important; }
-
-
 /* A9P_WIND_E_INSET_V1 — nudge E label left slightly */
 .windAbs text.lbl[x="364"][y="186"]{
   transform: translateX(-8px);
@@ -686,15 +682,34 @@ top:52px;
 }
 
 
-/* A9P_LEFT2_UV_COLOR_CSS_V1 — color UV digits only (6+), official breakpoints */
-#m_uv.uvHigh     { color: #f5c542 !important; } /* High (6–7) amber */
-#m_uv.uvVeryHigh { color: #f28c28 !important; } /* Very High (8–10) orange */
-#m_uv.uvExtreme  { color: #d93a2f !important; } /* Extreme (11+) red (matches wind needle) */
+/* Master MRW humidity.js — UV digit colors */
+#m_uv.uv-moderate { color: #e6b800 !important; }
+#m_uv.uv-high { color: #e67e00 !important; }
+#m_uv.uv-very-high { color: #c0392b !important; }
+#m_uv.uv-extreme { color: #7d3c98 !important; }
 
+/* Master MRW humidity.js — dew point */
+#m_dew.dew-moderate { color: #e6b800 !important; }
+#m_dew.dew-high { color: #e67e00 !important; }
+#m_dew.dew-very-high { color: #d35400 !important; }
+#m_dew.dew-extreme { color: #c0392b !important; }
 
-/* A9P_LEFT2_SOLAR_COLOR_CSS_V1 — color Solar digits only */
-#m_sol.solHigh     { color: #f5c542 !important; } /* Yellow (900–1100 W/m²) */
-#m_sol.solExtreme  { color: #f28c28 !important; } /* Orange (>1100 W/m²) */
+/* Master MRW current-temp.js — temp alert colors (big temp + side stacks) */
+#ct_out.tempAlert-yellow,
+#ct_app.tempAlert-yellow,
+#ct_thsw.tempAlert-yellow { color: #f0e68c !important; }
+#ct_out.tempAlert-orange,
+#ct_app.tempAlert-orange,
+#ct_thsw.tempAlert-orange { color: #ff8c00 !important; }
+#ct_out.tempAlert-red,
+#ct_app.tempAlert-red,
+#ct_thsw.tempAlert-red { color: #ff4444 !important; }
+#ct_out.tempAlert-lightblue,
+#ct_app.tempAlert-lightblue,
+#ct_thsw.tempAlert-lightblue { color: #87ceeb !important; }
+#ct_out.tempAlert-blue,
+#ct_app.tempAlert-blue,
+#ct_thsw.tempAlert-blue { color: #4169e1 !important; }
 
 
 /* A9P_LEFT3_AIR_PRESSURE_CSS_V1 — Left bottom: AirLink + Pressure */
@@ -737,14 +752,18 @@ top:52px;
   white-space:nowrap;
 }
 
-/* PM digit-only risk colors (EPA breakpoints, single red tier) */
-#pm25.pmY  { color:#f5c542 !important; }  /* Moderate */
-#pm25.pmO  { color:#f28c28 !important; }  /* USG */
-#pm25.pmR  { color:#d93a2f !important; }  /* Unhealthy+ */
+/* Master air-quality.js — AQI-style PM colors (Nowcast via /api/air/summary when reachable) */
+#pm25.aqi-moderate { color: #eab308 !important; }
+#pm25.aqi-unhealthy-sens { color: #f97316 !important; }
+#pm25.aqi-unhealthy { color: #ef4444 !important; }
+#pm25.aqi-very-unhealthy { color: #a855f7 !important; }
+#pm25.aqi-hazardous { color: #7f1d1d !important; }
 
-#pm10.pmY  { color:#f5c542 !important; }
-#pm10.pmO  { color:#f28c28 !important; }
-#pm10.pmR  { color:#d93a2f !important; }
+#pm10.aqi-moderate { color: #eab308 !important; }
+#pm10.aqi-unhealthy-sens { color: #f97316 !important; }
+#pm10.aqi-unhealthy { color: #ef4444 !important; }
+#pm10.aqi-very-unhealthy { color: #a855f7 !important; }
+#pm10.aqi-hazardous { color: #7f1d1d !important; }
 
 /* Pressure row */
 .airPBottom{
@@ -1159,15 +1178,15 @@ box-sizing:border-box; }
 </div>
 
 <div class="wCorner cTR">
-  <div class="clabel">AVG 10</div>
+  <div class="clabel">GUST</div>
   <div class="cvalue" id="w_gust">--</div>
-  <div class="csub">&nbsp;</div>
+  <div class="csub" id="w_gust_dir">--</div>
 </div>
 
 <div class="wCorner cBL">
   <div class="clabel">MAX 10</div>
   <div class="cvalue" id="w_max10">--</div>
-  <div class="csub">&nbsp;</div>
+  <div class="csub" id="w_max10_dir">--</div>
 </div>
 
 <div class="wCorner cBR">
@@ -1397,9 +1416,9 @@ function mrwAlert15(s){
   return (s.length<=15)? s : s.slice(0,15).trim();
 }
 
-/* A9P_WIND_LIVE_V1 — LAN-only wind wiring */
+/* A9P_WIND_LIVE_V2 — aligned with player/master-mrw/index.html windPoll + corner labels */
 (function(){
-  const POLL_MS = 2500;
+  const POLL_MS = 3000;
 
   function $(id){ return document.getElementById(id); }
   function setText(id, v){
@@ -1410,157 +1429,78 @@ function mrwAlert15(s){
     if (t === "" || t === "undefined" || t === "null") return;
     el.textContent = t;
   }
-
-  function num(x){
-    if (x === undefined || x === null) return null;
-    const n = Number(x);
-    return Number.isFinite(n) ? n : null;
+  function setNum(id, n){
+    const el = $(id);
+    if (!el) return;
+    el.textContent = (n != null && Number.isFinite(n)) ? Math.round(n) : "--";
   }
 
-  function pad2(n){ return (n<10?'0':'') + n; }
-  function fmtTime(ts){
-    if (!ts) return "--";
-    // Accept ISO string or epoch seconds/ms
-    try{
-      let d;
-      if (typeof ts === "number"){
-        d = new Date(ts > 1e12 ? ts : ts*1000);
-      } else {
-        d = new Date(ts);
-      }
-      if (isNaN(d.getTime())) return "--";
-      return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
-    }catch(e){ return "--"; }
+  function degToCardinal(deg) {
+    if (deg == null || !Number.isFinite(deg)) return null;
+    const d = ((Number(deg) % 360) + 360) % 360;
+    const cards = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+    const i = Math.round(d / 22.5) % 16;
+    return cards[i];
   }
 
-  function degToCardinal(deg){
-    const d = ((deg % 360) + 360) % 360;
-    const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
-    return dirs[Math.round(d/22.5) % 16];
-  }
-
-  function rotateNeedle(deg){
-    const g = $("w_needle");
-    if (!g) return;
-    const d = ((deg % 360) + 360) % 360;
-    g.setAttribute("transform", `rotate(${d} 180 180)`);
-  }
-
-  function pick(obj, keys){
-    for (const k of keys){
-      if (!obj) continue;
-      const v = obj[k];
-      if (v !== undefined && v !== null) return v;
-    }
-    return null;
-  }
-
-  function extractWind(payload){
-    // Try several shapes (wind.json or computed_rt.json)
-    const root = payload || {};
-    const c = root.computed || root.rt || root.current || root;
-
-    const w = root.wind || c.wind || c.w || c;
-
-    // Speed (mph)
-    const speed = num(pick(w, ["speed_mph","wind_speed_mph","windSpeed_mph","windSpeed","speed","wind_speed"]));
-
-    // Gust (mph)
-    const gust = num(pick(w, ["gust_mph","wind_gust_mph","windGust_mph","gust","windGust"]));
-
-    // Direction (degrees from)
-    const dirDeg = num(pick(w, ["dir_deg","wind_dir_deg","windDir_deg","windDir","dir","direction_deg","windDirection"]));
-
-    // Optional cardinal string
-    const dirTxt = pick(w, ["dir_txt","dir_text","direction","wind_dir_txt","windDirText"]);
-
-    // Avg 10m (mph) + optional dir text
-    const avg10 = num(pick(w, ["avg_10m_mph","avg10_mph","wind_avg_10m_mph","avg_10_mph","avg10"]));
-    const avg10Dir = pick(w, ["avg_10m_dir_deg","avg10_dir","avg_10m_dir","avg10_dir_txt","avg10_dir_text"]);
-
-    // Max gust 10m
-    const max10 = num(pick(w, ["max_gust_10m_mph","max10_mph","wind_max_gust_10m_mph","max_gust_10m","max10"]));
-
-    // Max day gust + time
-    const maxDay = num(pick(w, ["max_day_mph","max_gust_day_mph","maxday_mph","max_gust_day","maxday"]));
-    const maxDayTs = pick(w, ["max_day_ts","maxday_ts","max_gust_day_ts","maxday_time_ts","max_day_time"]);
-
-    // Also check extremes payloads sometimes nested
-    const ex = root.extremes || c.extremes || null;
-    let maxDay2 = null, maxDayTs2 = null;
-    try{
-      const day = ex && ex.wind_gust_mph && (ex.wind_gust_mph.day || ex.wind_gust_mph);
-      if (day){
-        maxDay2 = num(pick(day, ["hi","max","value"]));
-        maxDayTs2 = pick(day, ["hi_ts","ts","time"]);
-      }
-    }catch(e){}
-
-    return {
-      speed, gust, dirDeg, dirTxt,
-      avg10, avg10Dir,
-      max10,
-      maxDay: (maxDay != null ? maxDay : maxDay2),
-      maxDayTs: (maxDayTs != null ? maxDayTs : maxDayTs2)
-    };
+  function fmtTime12(ts) {
+    if (!ts) return null;
+    const s = String(ts).replace(" ", "T");
+    const d = new Date(s.replace(/([+-]\d{2})(\d{2})$/, "$1:$2"));
+    if (isNaN(d.getTime())) return null;
+    const h = d.getHours(), m = d.getMinutes();
+    const hh = (h % 12) || 12;
+    const ap = h >= 12 ? "pm" : "am";
+    return hh + ":" + String(m).padStart(2, "0") + ap;
   }
 
   async function fetchJSON(url){
-    const r = await fetch(url, {cache:"no-store"});
+    const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) throw new Error(url + " " + r.status);
     return await r.json();
   }
 
   async function poll(){
     try{
-      let data = null;
+      const d = await fetchJSON("/data/wind.json?ts=" + Date.now());
+      const w = d.wind || d;
+      const dir = Number(w.dir_deg ?? w.wind_dir_deg);
+      const speed = Number(w.speed_mph ?? w.wind_speed_mph);
+      setNum("w_speed_txt", speed);
+      setText("w_dir_txt", Number.isFinite(dir) ? Math.round(dir) + "°" : "--");
+      const needle = $("w_needle");
+      if (needle && Number.isFinite(dir)) needle.setAttribute("transform", "rotate(" + dir + " 180 180)");
 
-      // Prefer wind.json if present
-      try{
-        data = await fetchJSON("/data/wind.json");
-      }catch(e1){
-        data = await fetchJSON("/data/computed_rt.json");
-      }
+      setNum("w_avg10", w.avg_10m_mph ?? w.avg10_mph);
+      const dAvg = Number(w.avg_10m_dir_deg ?? w.avg10_dir_deg ?? dir);
+      const dGust = Number(w.gust_dir_deg ?? w.wind_gust_dir ?? dir);
+      const dMax10 = Number(w.max_gust_10m_dir_deg ?? w.max10_dir_deg ?? dir);
+      setText("w_avg10_dir", degToCardinal(dAvg) ?? "--");
 
-      const w = extractWind(data);
+      setNum("w_gust", w.gust_mph ?? w.wind_gust_mph);
+      setText("w_gust_dir", degToCardinal(dGust) ?? "--");
 
-      if (w.speed != null) setText("w_speed_txt", Math.round(w.speed));
-      if (w.dirDeg != null){
-        // Show degrees (or change later to cardinal if desired)
-        setText("w_dir_txt", Math.round(w.dirDeg) + "°");
-        rotateNeedle(w.dirDeg);
-      } else if (w.dirTxt){
-        setText("w_dir_txt", String(w.dirTxt));
-      }
+      setNum("w_max10", w.max_gust_10m_mph ?? w.max10_mph);
+      setText("w_max10_dir", degToCardinal(dMax10) ?? "--");
 
-      if (w.avg10 != null) setText("w_avg10", Math.round(w.avg10));
-      if (w.avg10Dir){
-        setText("w_avg10_dir", "");
-      } else if (w.dirDeg != null){
-        setText("w_avg10_dir", "");
-      }
-
-      if (w.avg10Dir != null) setText("w_gust", degToCardinal(w.avg10Dir)); else setText("w_gust","--");
-      if (w.max10 != null) setText("w_max10", Math.round(w.max10));
-      if (w.maxDay != null) setText("w_maxday", Math.round(w.maxDay));
-      if (w.maxDayTs) setText("w_maxday_time", fmtTime(w.maxDayTs));
-
-      // Fallback: Max Day from /data/extremes.json (common MRW truth source)
-      if (w.maxDay == null){
+      let maxDay = w.max_day_mph ?? w.max_gust_day_mph;
+      let maxTs = w.max_day_ts ?? w.maxday_ts;
+      if (maxDay == null || !Number.isFinite(maxDay)) {
         try{
-          const ex = await fetchJSON("/data/extremes.json");
+          const ex = await fetchJSON("/data/extremes.json?ts=" + Date.now());
           const day = ex && ex.extremes && ex.extremes.wind_gust_mph && ex.extremes.wind_gust_mph.day;
           if (day){
             const hi = Number(day.hi);
-            if (Number.isFinite(hi)) setText("w_maxday", Math.round(hi));
-            if (day.hi_ts) setText("w_maxday_time", fmtTime(day.hi_ts));
+            if (Number.isFinite(hi)) maxDay = hi;
+            maxTs = day.hi_ts || maxTs;
           }
-        }catch(e2){}
+        }catch(_){}
       }
-
+      if (maxDay != null && Number.isFinite(maxDay)) setText("w_maxday", Math.round(maxDay));
+      else setText("w_maxday", "--");
+      setText("w_maxday_time", maxTs ? (fmtTime12(maxTs) || "--") : "--");
     }catch(e){
-      // no-op: keep last good values (sticky)
-      // console.log("wind poll err", e);
+      /* sticky */
     }
   }
 
@@ -1579,16 +1519,15 @@ function mrwAlert15(s){
 })();
 
 
-/* A9P_CURTEMP_LIVE_V1 — render-only temps */
+/* A9P_CURTEMP_LIVE_V2 — aligned with player/master-mrw/modules/current-temp.js */
 (function(){
-  const POLL_MS = 2500;
-  
-  // === A9P_CURTEMP_FAKE105_V1 ===
-  // TEMP visual test for 3-digit sizing. Set to null to return to live.
-  const FAKE_OUT  = null;   // big temp
-  const FAKE_APP  = 123;   // Heat Index / Wind Chill value
-  const FAKE_THSW = 110;   // THSW value
-function $(id){ return document.getElementById(id); }
+  const POLL_MS = 3000;
+
+  const FAKE_OUT  = null;
+  const FAKE_APP  = null;
+  const FAKE_THSW = null;
+
+  function $(id){ return document.getElementById(id); }
   function setText(id, v){
     const el = $(id);
     if (!el || v === undefined || v === null) return;
@@ -1602,50 +1541,105 @@ function $(id){ return document.getElementById(id); }
     return Number.isFinite(n) ? n : null;
   }
   async function fetchJSON(url){
-    const r = await fetch(url, {cache:"no-store"});
+    const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) throw new Error(url + " " + r.status);
     return await r.json();
   }
+
+  function calcHeatIndex(tF, rh) {
+    if (!Number.isFinite(tF) || !Number.isFinite(rh) || tF < 50) return null;
+    const t = tF, r = rh;
+    const hi = -42.379 + 2.04901523 * t + 10.14333127 * r - 0.22475541 * t * r - 6.83783e-3 * t * t - 5.481717e-2 * r * r + 1.22874e-3 * t * t * r + 8.5282e-4 * t * r * r - 1.99e-6 * t * t * r * r;
+    return Number.isFinite(hi) ? hi : null;
+  }
+
+  function calcWindChill(tF, windMph) {
+    if (tF > 50 || windMph < 3) return tF;
+    return 35.74 + 0.6215 * tF - 35.75 * Math.pow(windMph, 0.16) + 0.4275 * tF * Math.pow(windMph, 0.16);
+  }
+
+  function tempAlertClass(v) {
+    if (v == null || !Number.isFinite(v)) return "";
+    if (v >= 105) return "tempAlert-red";
+    if (v >= 100) return "tempAlert-orange";
+    if (v >= 95) return "tempAlert-yellow";
+    if (v <= 32) return "tempAlert-blue";
+    if (v <= 39.9) return "tempAlert-lightblue";
+    return "";
+  }
+
+  function applyTempAlert(el, v) {
+    if (!el) return;
+    ["tempAlert-yellow","tempAlert-orange","tempAlert-red","tempAlert-lightblue","tempAlert-blue"].forEach((c) => el.classList.remove(c));
+    if (v == null || !Number.isFinite(v)) return;
+    const cls = tempAlertClass(v);
+    if (cls) el.classList.add(cls);
+  }
+
   async function poll(){
     try{
-      
-      // A9P_CURTEMP_FAKE105_ACTIVE — render-only override for layout testing
-      if (FAKE_OUT !== null){
-        setText("ct_out", FAKE_OUT);
+      if (FAKE_OUT !== null) {
+        $("ct_out").textContent = String(FAKE_OUT);
         setText("ct_app_lbl", "HEAT INDEX");
-        setText("ct_app", FAKE_APP);
-        setText("ct_thsw", FAKE_THSW);
+        setText("ct_app", String(FAKE_APP));
+        setText("ct_thsw", String(FAKE_THSW));
         return;
       }
-const data = await fetchJSON("/data/computed_rt.json");
-      const c = data.computed || data.rt || data.current || data;
-      const out   = num((data.inputs && data.inputs.temp_f) ?? c.temp_f ?? c.out_temp_f ?? c.outTemp_f);
 
-const heatx = num(c.heat_index_f ?? c.heatIndex_f);
-      const wchill= num(c.wind_chill_f ?? c.windChill_f);
-      const thsw  = num(c.thsw_f ?? c.thsw);
+      const [nowRes, windRes, compRes] = await Promise.allSettled([
+        fetchJSON("/data/now.json?ts=" + Date.now()),
+        fetchJSON("/data/wind.json?ts=" + Date.now()),
+        fetchJSON("/data/computed_rt.json?ts=" + Date.now()),
+      ]);
+      const now = nowRes.status === "fulfilled" ? nowRes.value : null;
+      const wind = windRes.status === "fulfilled" ? windRes.value : null;
+      const computed = compRes.status === "fulfilled" ? compRes.value : null;
 
-      if (out != null) 
-if (out != null) {
-  const v = (Math.round(out * 10) / 10).toFixed(1);
-  const parts = v.split(".");
-  const html = parts.length === 2
-    ? parts[0] + '<span class="ctDec">.' + parts[1] + '</span>'
-    : v;
-  document.getElementById("ct_out").innerHTML = html;
-}
+      const n = (now && now.now) ? now.now : (now || {});
+      const w = wind?.wind || wind || {};
+      const c = computed?.computed || {};
 
+      const temp = Number(n.temp_f ?? n.outTemp);
+      const hum = Number(n.humidity_pct ?? n.outHumidity ?? n.humidity);
+      const speed = Number(w.speed_mph ?? w.wind_speed_mph ?? w.windSpeed);
+      let heatIndex = num(c.heat_index_f ?? n.heat_index ?? n.heatindex);
+      let windChill = num(c.wind_chill_f ?? n.windchill ?? n.windChill);
+      const thsw = num(c.thsw_f ?? n.thsw ?? n.apparent_temp ?? n.apparentTemp);
 
-      // 50°F threshold — render-only selection (no math)
-      if (out != null && out < 50 && wchill != null){
-        setText("ct_app_lbl", "WIND CHILL");
-        setText("ct_app", Math.round(wchill));
-      } else if (heatx != null){
-        setText("ct_app_lbl", "HEAT INDEX");
-        setText("ct_app", Math.round(heatx));
+      const ctOut = $("ct_out");
+      const ctApp = $("ct_app");
+      const ctThsw = $("ct_thsw");
+      const ctAppLbl = $("ct_app_lbl");
+
+      if (ctOut && Number.isFinite(temp)) {
+        const v = (Math.round(temp * 10) / 10).toFixed(1);
+        const parts = v.split(".");
+        const html = parts.length === 2
+          ? parts[0] + '<span class="ctDec">.' + parts[1] + '</span>'
+          : v;
+        ctOut.innerHTML = html;
+        applyTempAlert(ctOut, temp);
       }
 
-      if (thsw != null) setText("ct_thsw", Math.round(thsw));
+      const useHeatIndex = temp >= 50;
+      let hiOrWc = useHeatIndex ? heatIndex : windChill;
+      if (hiOrWc == null || !Number.isFinite(hiOrWc)) {
+        if (useHeatIndex && Number.isFinite(temp) && Number.isFinite(hum)) {
+          hiOrWc = calcHeatIndex(temp, hum);
+        } else if (!useHeatIndex && Number.isFinite(temp) && Number.isFinite(speed)) {
+          hiOrWc = calcWindChill(temp, speed);
+        }
+      }
+
+      if (ctAppLbl) ctAppLbl.textContent = useHeatIndex ? "HEAT INDEX" : "WIND CHILL";
+      if (ctApp && hiOrWc != null && Number.isFinite(hiOrWc)) {
+        setText("ct_app", hiOrWc.toFixed(1));
+        applyTempAlert(ctApp, hiOrWc);
+      }
+      if (ctThsw && thsw != null && Number.isFinite(thsw)) {
+        setText("ct_thsw", thsw.toFixed(1));
+        applyTempAlert(ctThsw, thsw);
+      }
     }catch(e){}
   }
   setInterval(poll, POLL_MS);
@@ -1678,9 +1672,9 @@ if (out != null) {
 })();
 
 
-/* A9P_LEFT2_METRICS_JS_V1 — render-only wiring for Left 2 */
+/* A9P_LEFT2_METRICS_JS_V2 — aligned with player/master-mrw/modules/humidity.js */
 (function(){
-  const POLL_MS = 2500;
+  const POLL_MS = 3000;
 
   function $(id){ return document.getElementById(id); }
   function setText(id, v){
@@ -1690,59 +1684,69 @@ if (out != null) {
     if (!t || t === "null" || t === "undefined") return;
     el.textContent = t;
   }
-  function num(x){
-    if (x === undefined || x === null) return null;
-    const n = Number(x);
-    return Number.isFinite(n) ? n : null;
+  function applyLiveHumidity(rhPct, dpF, solar, uv){
+    const hum = Number(rhPct);
+    const dew = Number(dpF);
+    const sol = Number(solar);
+    const u = Number(uv);
+
+    if (Number.isFinite(hum)) setText("m_hum", String(Math.round(hum)));
+
+    const dewEl = $("m_dew");
+    if (dewEl && Number.isFinite(dew)) {
+      setText("m_dew", dew.toFixed(1));
+      dewEl.classList.remove("dew-moderate", "dew-high", "dew-very-high", "dew-extreme");
+      if (dew >= 80) dewEl.classList.add("dew-extreme");
+      else if (dew >= 75) dewEl.classList.add("dew-very-high");
+      else if (dew >= 70) dewEl.classList.add("dew-high");
+      else if (dew >= 65) dewEl.classList.add("dew-moderate");
+    }
+
+    const uvEl = $("m_uv");
+    if (uvEl && Number.isFinite(u)) {
+      setText("m_uv", (Math.round(u * 10) / 10).toFixed(1));
+      uvEl.classList.remove("uv-moderate", "uv-high", "uv-very-high", "uv-extreme");
+      if (u >= 11) uvEl.classList.add("uv-extreme");
+      else if (u >= 8) uvEl.classList.add("uv-very-high");
+      else if (u >= 6) uvEl.classList.add("uv-high");
+      else if (u >= 4) uvEl.classList.add("uv-moderate");
+    }
+
+    if (Number.isFinite(sol)) setText("m_sol", String(Math.round(sol)));
   }
 
   async function fetchJSON(url){
-    const r = await fetch(url, {cache:"no-store"});
+    const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) throw new Error(url + " " + r.status);
     return await r.json();
   }
 
   async function poll(){
     try{
-      const c = await fetchJSON("/data/computed_rt.json?ts=" + Date.now());
-      const hum = num(c?.inputs?.humidity_pct);
-      const sol = num(c?.inputs?.solar_wm2);
-      const uv  = null; // UV comes from now.json (uv_index)
-// dewpoint comes from now.json (as in Galaxy14)
-      let dew = null;
-      try{
-        const n = await fetchJSON("/data/now.json?ts=" + Date.now());
-                dew = num(n?.now?.dewpoint_f);
+      let nowIn = null;
+      try {
+        nowIn = await fetchJSON("/data/now.json?ts=" + Date.now());
+      } catch (_) { /* sticky */ }
+      const n = (nowIn && nowIn.now) ? nowIn.now : {};
+      const hum = n.humidity_pct ?? n.outHumidity ?? n.humidity;
+      const dew = n.dewpoint_f ?? n.dewpoint ?? n.dewPoint;
+      const solar = n.solar_wm2 ?? n.radiation ?? n.solarRadiation;
+      const uv = n.uv_index ?? n.UV ?? n.uv;
 
-      
-                var uv_now = num(n?.now?.uv_index);
-}catch(e2){}
-
-      if (hum != null) setText("m_hum", Math.round(hum));
-      if (dew != null) setText("m_dew", Math.round(dew));
-      if (typeof uv_now !== "undefined" && uv_now != null){
-        const u = (Math.round(uv_now * 10) / 10).toFixed(1);
-        setText("m_uv", u);
-
-        // Color digits only when UV >= 6 (official categories)
-        const el = document.getElementById("m_uv");
-        if (el){
-          el.classList.remove("uvHigh","uvVeryHigh","uvExtreme");
-          if (u >= 11) el.classList.add("uvExtreme");
-          else if (u >= 8) el.classList.add("uvVeryHigh");
-          else if (u >= 6) el.classList.add("uvHigh");
-        }
-      }if (sol != null){
-        const v = Math.round(sol);
-        setText("m_sol", v);
-
-        const el = document.getElementById("m_sol");
-        if (el){
-          el.classList.remove("solHigh","solExtreme");
-          if (v > 1100) el.classList.add("solExtreme");
-          else if (v >= 900) el.classList.add("solHigh");
-        }
-      }}catch(e){}
+      if (nowIn) {
+        applyLiveHumidity(hum, dew, solar, uv);
+        return;
+      }
+      try {
+        const c = await fetchJSON("/data/computed_rt.json?ts=" + Date.now());
+        applyLiveHumidity(
+          c?.inputs?.humidity_pct,
+          c?.inputs?.dewpoint_f,
+          c?.inputs?.solar_wm2,
+          c?.inputs?.uv_index
+        );
+      } catch (_) { /* sticky */ }
+    }catch(e){}
   }
 
   setInterval(poll, POLL_MS);
@@ -1750,9 +1754,13 @@ if (out != null) {
 })();
 
 
-/* A9P_LEFT3_AIR_PRESSURE_JS_V1 — render-only wiring */
+/* A9P_LEFT3_AIR_PRESSURE_JS_V2 — PM via /api/air/summary when CORS allows; else air.json; colors = Master air-quality.js */
 (function(){
-  const POLL_MS = 2500;
+  const POLL_MS = 3000;
+  const AIR_URLS = [
+    "/api/air/summary",
+    "https://api.moonriverweather.com/api/air/summary",
+  ];
 
   function $(id){ return document.getElementById(id); }
   function setText(id, v){
@@ -1768,44 +1776,85 @@ if (out != null) {
     return Number.isFinite(n) ? n : null;
   }
   async function fetchJSON(url){
-    const r = await fetch(url, {cache:"no-store"});
+    const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) throw new Error(url + " " + r.status);
     return await r.json();
   }
 
-  function setPMColor(el, value, kind){
-    if (!el) return;
-    el.classList.remove("pmY","pmO","pmR");
-    if (value == null) return;
+  function pm25Class(v) {
+    if (v == null || !Number.isFinite(v)) return "";
+    if (v <= 9) return "";
+    if (v <= 35.4) return "aqi-moderate";
+    if (v <= 55.4) return "aqi-unhealthy-sens";
+    if (v <= 125.4) return "aqi-unhealthy";
+    if (v <= 225.4) return "aqi-very-unhealthy";
+    return "aqi-hazardous";
+  }
+  function pm10Class(v) {
+    if (v == null || !Number.isFinite(v)) return "";
+    if (v <= 54) return "";
+    if (v <= 154) return "aqi-moderate";
+    if (v <= 254) return "aqi-unhealthy-sens";
+    if (v <= 354) return "aqi-unhealthy";
+    if (v <= 424) return "aqi-very-unhealthy";
+    return "aqi-hazardous";
+  }
 
-    // EPA breakpoints, single red tier (digits only)
-    if (kind === "pm25"){
-      if (value >= 55.5) el.classList.add("pmR");
-      else if (value >= 35.5) el.classList.add("pmO");
-      else if (value >= 12.1) el.classList.add("pmY");
-    } else { // pm10
-      if (value >= 255) el.classList.add("pmR");
-      else if (value >= 155) el.classList.add("pmO");
-      else if (value >= 55) el.classList.add("pmY");
+  function applyPmClasses(el, cls){
+    if (!el) return;
+    el.className = ["aVal", cls].filter(Boolean).join(" ");
+  }
+
+  async function fetchAirSummary(){
+    for (let i = 0; i < AIR_URLS.length; i++) {
+      const base = AIR_URLS[i];
+      try{
+        const url = base + (base.indexOf("?") >= 0 ? "&" : "?") + "ts=" + Date.now();
+        const r = await fetch(url, { cache: "no-store", mode: "cors" });
+        if (!r.ok) continue;
+        const data = await r.json();
+        if (data && (data.pm25 != null || data.pm10 != null)) return data;
+      }catch(_){ /* try next */ }
     }
+    return null;
   }
 
   async function poll(){
     try{
-      const a = await fetchJSON("/data/air.json?ts=" + Date.now());
-      const pm25 = num(a?.air?.pm_2p5_ugm3);
-      const pm10 = num(a?.air?.pm_10_ugm3);
+      let pm25 = null;
+      let pm10 = null;
+      const summary = await fetchAirSummary();
+      if (summary) {
+        pm25 = num(summary.pm25);
+        pm10 = num(summary.pm10);
+      }
+      if (pm25 == null || pm10 == null) {
+        try{
+          const a = await fetchJSON("/data/air.json?ts=" + Date.now());
+          if (pm25 == null) pm25 = num(a?.air?.pm_2p5_ugm3);
+          if (pm10 == null) pm10 = num(a?.air?.pm_10_ugm3);
+        }catch(_){ /* sticky */ }
+      }
 
-      if (pm25 != null) setText("pm25", Math.round(pm25));
-      if (pm10 != null) setText("pm10", Math.round(pm10));
+      if (pm25 != null) setText("pm25", pm25.toFixed(1));
+      if (pm10 != null) setText("pm10", pm10.toFixed(1));
+      applyPmClasses($("pm25"), pm25Class(pm25));
+      applyPmClasses($("pm10"), pm10Class(pm10));
 
-      setPMColor($("pm25"), pm25, "pm25");
-      setPMColor($("pm10"), pm10, "pm10");
-
-      const c = await fetchJSON("/data/computed_rt.json?ts=" + Date.now());
-      const p_inhg = num(c?.inputs?.pressure_inhg);
-      const arrow = c?.computed?.pressure_trend_arrow;
-
+      let p_inhg = null;
+      let arrow = null;
+      try{
+        const c = await fetchJSON("/data/computed_rt.json?ts=" + Date.now());
+        p_inhg = num(c?.inputs?.pressure_inhg);
+        arrow = c?.computed?.pressure_trend_arrow;
+      }catch(_){ /* sticky */ }
+      if (p_inhg == null) {
+        try{
+          const nowJ = await fetchJSON("/data/now.json?ts=" + Date.now());
+          const n = (nowJ && nowJ.now) ? nowJ.now : {};
+          p_inhg = num(n.pressure_inhg);
+        }catch(_){}
+      }
       if (p_inhg != null) setText("p_val", (Math.round(p_inhg * 100) / 100).toFixed(2));
       if (arrow != null) setText("p_arrow", arrow);
 
