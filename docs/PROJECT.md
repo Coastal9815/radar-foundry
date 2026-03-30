@@ -329,6 +329,7 @@ Or run: `./bin/backup_restore_point.sh`
 
 | Date | Change |
 |------|--------|
+| 2026-03-30 | Local dev: MRW Next default **3010**; **3001** reserved for CCP_Core API — `WEATHER_DEV_PORTS.md`, `dev_moonriverweather_safe.sh`, `weather_dev_status.sh`; moonriverweather-public `package.json` |
 | 2026-03-30 | Local dev: `docs/local-dev/WEATHER_DEV_PORTS.md` + `bin/weather_dev_status.sh`, `dev_serve_frames_safe.sh`, `dev_moonriverweather_safe.sh` (port safety; CCP_Core 3001 conflict documented) |
 | 2026-03-30 | Deployment: agent must run wx-i9 deploy same session as player/master-mrw changes (push ≠ live); §7 table — `deploy_radar_foundry_to_wx_i9.sh` vs `sync_to_wx_i9.sh` |
 | 2026-03-16 | Development architecture: local-first on Office Mac; docs/DEVELOPMENT_ARCHITECTURE.md, DEVELOPMENT_IMPLEMENTATION_PLAN.md; seed/deploy helper scripts |

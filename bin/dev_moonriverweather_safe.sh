@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Start moonriverweather-public Next dev only if its port is free or already owned by Next.
-# Default port 3001 (package.json). CONFLICTS with CCP_Core API default — see WEATHER_DEV_PORTS.md.
+# Default port 3010 (package.json). Coastal Care Core API defaults to 3001 — see WEATHER_DEV_PORTS.md.
 #
 # Usage:
 #   RADAR_FOUNDRY_ROOT=... ./bin/dev_moonriverweather_safe.sh
 # Or run from radar-foundry after setting MOONRIVERWEATHER_ROOT to your clone path.
+# Override port: MOONRIVERWEATHER_DEV_PORT=3020 ./bin/dev_moonriverweather_safe.sh
 set -euo pipefail
 
 BIN="$(cd "$(dirname "$0")" && pwd)"
@@ -15,7 +16,9 @@ RF_ROOT="$(cd "$BIN/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$RF_ROOT/.." && pwd)"
 
 MOON_ROOT="${MOONRIVERWEATHER_ROOT:-$WORKSPACE_ROOT/moonriverweather-public}"
-PORT="${MOONRIVERWEATHER_DEV_PORT:-3001}"
+# Keep in sync with moonriverweather-public package.json "dev" -p value.
+MOON_DEFAULT_PORT=3010
+PORT="${MOONRIVERWEATHER_DEV_PORT:-$MOON_DEFAULT_PORT}"
 
 if [[ ! -f "$MOON_ROOT/package.json" ]]; then
   echo "moonriverweather-public not found at: $MOON_ROOT" >&2
@@ -27,10 +30,10 @@ weather_assert_port_free_or_ours "$PORT" "moonriverweather"
 
 cd "$MOON_ROOT" || exit 1
 
-if [[ "$PORT" != "3001" ]]; then
+if [[ "$PORT" != "$MOON_DEFAULT_PORT" ]]; then
   echo "Starting moonriverweather-public: next dev -p ${PORT} --webpack (MOONRIVERWEATHER_DEV_PORT override)" >&2
   exec npx next dev -p "$PORT" --webpack
 fi
 
-echo "Starting moonriverweather-public: npm run dev (port 3001 per package.json)…" >&2
+echo "Starting moonriverweather-public: npm run dev (port ${MOON_DEFAULT_PORT} per package.json)…" >&2
 exec npm run dev

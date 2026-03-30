@@ -76,7 +76,7 @@ weather_describe_port() {
       ;;
     moonriverweather)
       if _weather_looks_like_next_mrw "$cmd"; then ours="matches this workspace’s usual Next dev (moonriverweather-public)"; fi
-      if _weather_looks_like_ccp_backend "$cmd"; then ours="WARNING: looks like CCP_Core API — clashes with MRW Next on 3001"; fi
+      if _weather_looks_like_ccp_backend "$cmd"; then ours="WARNING: looks like CCP_Core API — if this is MRW’s dev port, stop Core or use a different MOONRIVERWEATHER_DEV_PORT"; fi
       ;;
   esac
   echo "Status: in use — ${ours}"
