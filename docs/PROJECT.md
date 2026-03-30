@@ -207,6 +207,18 @@ Browser: player/mrms/, player/kclx/, etc.
 
 **Development is on Office Mac.** Deploy to runtime when ready.
 
+### Agent runs wx-i9 deploy (same session as the code change)
+
+**Git push alone does not update wx-i9.** The Beelink and browsers load `~/wx/radar-foundry/` on **wx-i9**, not GitHub. When the agent changes anything served from there — especially `player/` (KCLX, MRMS, **`player/master-mrw/`**, etc.) — the agent **runs** a deploy in that same session:
+
+| Situation | Command (from up-to-date repo root) |
+|-----------|-------------------------------------|
+| **Typical:** Mac has the commit; player / config / `bin/` only | `./bin/deploy_radar_foundry_to_wx_i9.sh` |
+| **Full sync:** regenerate lightning GeoJSON and rsync (best from **wx-core** after `git pull`) | `./bin/sync_to_wx_i9.sh` |
+| **Mac triggers wx-core’s tree** | `./bin/deploy_wx_core_to_wx_i9.sh` (SSHs to wx-core, runs `sync_to_wx_i9.sh` there) |
+
+Do not end a turn with “merged” or “pushed” for Master MRW / players **without** having deployed to wx-i9 (or report SSH/rsync failure after trying). See `.cursor/rules/agent-executes.mdc`.
+
 | Action | Command |
 |--------|---------|
 | Seed (pull from wx-core) | `./bin/seed_radar_foundry_from_wx_core.sh` |
@@ -222,7 +234,7 @@ See `docs/DEVELOPMENT_IMPLEMENTATION_PLAN.md`.
 ./bin/sync_to_wx_i9.sh
 ```
 
-Rsyncs project to wx-i9, runs `setup_serve_root.sh` on remote. **Best run from wx-core** (lightning geo generators need ndjson). Run after any player or config change.
+Rsyncs project to wx-i9, runs `setup_serve_root.sh` on remote. **Best run from wx-core** (lightning geo generators need ndjson). Run after any player or config change **that must ship with fresh lightning GeoJSON**; for most Master MRW / player HTML+CSS edits, **`deploy_radar_foundry_to_wx_i9.sh` from the Mac** is enough.
 
 ### setup_serve_root.sh
 
@@ -315,6 +327,7 @@ Or run: `./bin/backup_restore_point.sh`
 
 | Date | Change |
 |------|--------|
+| 2026-03-30 | Deployment: agent must run wx-i9 deploy same session as player/master-mrw changes (push ≠ live); §7 table — `deploy_radar_foundry_to_wx_i9.sh` vs `sync_to_wx_i9.sh` |
 | 2026-03-16 | Development architecture: local-first on Office Mac; docs/DEVELOPMENT_ARCHITECTURE.md, DEVELOPMENT_IMPLEMENTATION_PLAN.md; seed/deploy helper scripts |
 | 2026-03-14 | Lightning: Production deployment — Startup pipeline (NexStorm + relay), SIPC support, retry logic, autologon setup; deploy_to_lightning_pc.sh |
 | 2026-03-15 | Lightning hardening: retries (SSH/SCP 3x), atomic writes, timeouts, last_success_at_utc, watchdog integration, ThrottleInterval, .cursor/rules/lightning-hardening.mdc |
