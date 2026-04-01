@@ -27,6 +27,18 @@ Radar Foundry produces weather radar overlays and serves them via web players. I
 
 ---
 
+## Mapbox players (public site + radar.moonriverweather.com)
+
+Player HTML under `player/*/index.html` ships with `YOUR_MAPBOX_PUBLIC_TOKEN` so secrets are not committed. **If maps show chrome but no basemap/tiles**, the deployed copy still has the placeholder.
+
+1. In Mapbox Studio, use a **public** token (pk.…) with URL restrictions for `https://radar.moonriverweather.com/*` and your LAN hosts if needed.
+2. From repo root: `export MAPBOX_PUBLIC_TOKEN='pk....' && ./bin/inject_mapbox_token.sh`
+3. Deploy/sync the updated `player/` tree to the origin that serves `radar.moonriverweather.com` (do **not** commit the substituted files).
+
+moonriverweather.com embeds those players in iframes; fixing the token on the radar host restores maps.
+
+---
+
 ## 2. Rules & Conventions
 
 ### Agent Executes — User Directs
@@ -329,6 +341,7 @@ Or run: `./bin/backup_restore_point.sh`
 
 | Date | Change |
 |------|--------|
+| 2026-04-01 | Mapbox: `bin/inject_mapbox_token.sh` + PROJECT § Mapbox players — live `radar.moonriverweather.com` had placeholder token (blank maps in embeds) |
 | 2026-03-30 | Local dev: MRW Next default **3010**; **3001** reserved for CCP_Core API — `WEATHER_DEV_PORTS.md`, `dev_moonriverweather_safe.sh`, `weather_dev_status.sh`; moonriverweather-public `package.json` |
 | 2026-03-30 | Local dev: `docs/local-dev/WEATHER_DEV_PORTS.md` + `bin/weather_dev_status.sh`, `dev_serve_frames_safe.sh`, `dev_moonriverweather_safe.sh` (port safety; CCP_Core 3001 conflict documented) |
 | 2026-03-30 | Deployment: agent must run wx-i9 deploy same session as player/master-mrw changes (push ≠ live); §7 table — `deploy_radar_foundry_to_wx_i9.sh` vs `sync_to_wx_i9.sh` |

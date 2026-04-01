@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Replace YOUR_MAPBOX_PUBLIC_TOKEN in Mapbox-based player HTML with a real public token.
+# Mapbox pk.* tokens are public; restrict by URL in Mapbox account. Do not commit real tokens.
+#
+# Usage (from repo root or via this script):
+#   export MAPBOX_PUBLIC_TOKEN="pk...."
+#   ./bin/inject_mapbox_token.sh
+#
+# Run before rsync/deploy to Cloudflare or wx-i9 if players show UI but blank maps.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -z "${MAPBOX_PUBLIC_TOKEN:-}" ]]; then
+  echo "MAPBOX_PUBLIC_TOKEN is not set (Mapbox public token starting with pk.)" >&2
+  exit 1
+fi
+export RF_ROOT="$ROOT"
+
+python3 <<'PY'
+import os
+import pathlib
+import sys
+
+root = pathlib.Path(os.environ["RF_ROOT"])
+token = os.environ["MAPBOX_PUBLIC_TOKEN"]
+if "YOUR_MAPBOX" in token:
+    print("Refusing: token looks like another placeholder", file=sys.stderr)
+    sys.exit(1)
+needle = "YOUR_MAPBOX_PUBLIC_TOKEN"
+n = 0
+for path in (root / "player").rglob("index.html"):
+    text = path.read_text(encoding="utf-8")
+    if needle not in text:
+        continue
+    path.write_text(text.replace(needle, token), encoding="utf-8")
+    n += 1
+    print("Updated", path.relative_to(root))
+if n == 0:
+    print("No files contained", needle, file=sys.stderr)
+    sys.exit(1)
+print("Injected token into", n, "player file(s).")
+PY
