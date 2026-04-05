@@ -556,17 +556,29 @@ def run_one_cycle(
 
 
 def _run_post_generate() -> None:
-    """Run generate_lightning_points_xweather_local.py --remote."""
+    """Run generate_lightning_points_xweather_local.py.
+
+    Default: --remote (scp to wx-i9 serve_root). On wx-i9 set MRW_LIGHTNING_PUBLISH_LOCAL=1
+    to write directly into local serve_root (no scp).
+    """
     py = PROJECT_ROOT / ".venv" / "bin" / "python"
     script = PROJECT_ROOT / "bin" / "generate_lightning_points_xweather_local.py"
     if not py.exists() or not script.exists():
         return
+    publish_local = os.environ.get("MRW_LIGHTNING_PUBLISH_LOCAL", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    cmd: list[str] = [str(py), str(script)]
+    if not publish_local:
+        cmd.append("--remote")
     try:
         subprocess.run(
-            [str(py), str(script), "--remote"],
+            cmd,
             cwd=str(PROJECT_ROOT),
             capture_output=True,
-            timeout=15,
+            timeout=30,
         )
     except Exception:
         pass

@@ -1,0 +1,16 @@
+[Unit]
+Description=MRW Xweather lightning fetch (GeoJSON to local serve_root on wx-i9)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/scott/wx/radar-foundry
+ExecStart=/home/scott/wx/radar-foundry/bin/run_lightning_xweather_fetch_wx_i9.sh
+Restart=always
+RestartSec=5
+StandardOutput=append:/tmp/lightning_xweather_fetch_wxi9.log
+StandardError=append:/tmp/lightning_xweather_fetch_wxi9.log
+
+[Install]
+WantedBy=default.target
