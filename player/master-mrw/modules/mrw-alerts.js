@@ -385,7 +385,7 @@
 
     titleEl.textContent = "Weather Alerts";
     titleEl.className = "threatHeading";
-    if (data && data.titleAlertType === "flash-red") {
+    if (data && (data.titleAlertType === "flash-red" || data.hasLightningAlert)) {
       titleEl.classList.add("threatHeading--flash-red");
     } else if (data && data.titleAlertType === "yellow") {
       titleEl.classList.add("threatHeading--yellow");
