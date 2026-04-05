@@ -12,5 +12,6 @@ When changing **automation that hits wx-i9 or Lightning-PC** from **wx-core**:
 3. **Deploy discipline** — `deploy_radar_foundry_to_wx_core.sh` must **not** sync `serve_root/` or `out/` from a dev Mac (wx-core is source of truth for generated products there).
 4. **Watch collateral damage** — if adding loops with **subprocess ssh/scp**, estimate **connections per minute**; macOS ephemeral ports are ~**16k**; sustained storms + **TIME_WAIT** caused full **HTTPS outage** on wx-core in 2026-04.
 5. **Watchdog** — `watchdog_all.sh` logs high **TIME_WAIT** and **HTTPS probe** failures; extend it when adding new failure modes.
+6. **Host protect** — On wx-core, keep **`com.mrw.host_protect`** enabled (`install_host_protect_launchd.sh`); it snapshots TCP/HTTPS/jobs twice daily and weekly **SSH multiplex** refresh.
 
 See **`docs/MRW_OPERATIONAL_HARDENING.md`**.

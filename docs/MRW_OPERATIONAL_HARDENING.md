@@ -24,8 +24,25 @@ Canonical notes so outages like **2026-04 TCP ephemeral port exhaustion** (sympt
 4. **`bin/watchdog_all.sh`** — every run logs **TIME_WAIT** high-water warnings and **HTTPS probe** failure to `/tmp/mrw_watchdog.log`.
 5. **`lightning_xweather_fetch.py`** — **curl -4** fallback if `urllib` hits macOS bind quirks.
 
+## Host protection job (wx-core)
+
+**`com.mrw.host_protect`** (`conf/launchd/com.mrw.host_protect.plist`) runs **`bin/mrw_host_protect.sh`** at boot and **twice daily** (06:02 / 18:02 local). It appends to **`/tmp/mrw_host_protect.log`**:
+
+- `TIME_WAIT` / `FIN_WAIT_2` counts  
+- HTTPS probe (same class of failure as the 2026-04 outage)  
+- Whether **Xweather** and **`lightning_nex_tail`** LaunchAgents look loaded  
+- **`ALERT`** lines when thresholds trip or jobs look wrong  
+- **Weekly (Sunday UTC):** re-runs **`install_ssh_multiplex_mrw.sh`** so **`~/.ssh/config.d/mrw-multiplex.conf`** stays aligned with the repo after edits or OS work.
+
+**One-time install / upgrade** on wx-core:
+
+```bash
+cd ~/wx/radar-foundry && ./bin/install_host_protect_launchd.sh
+```
+
 ## Operator checklist
 
 - After changing lightning or deploy scripts: **deploy wx-core** then confirm **`launchctl list | grep xweather`** and **`tail /tmp/lightning_xweather_fetch.log`**.
+- Review **`/tmp/mrw_host_protect.log`** and **`/tmp/mrw_watchdog.log`** when anything feels “stuck” or HTTPS-heavy tools fail.
 - If HTTPS on wx-core breaks again: **check TIME_WAIT** (`netstat -an -p tcp | grep TIME_WAIT | wc -l`) and **watchdog log**; consider **reboot** after stopping churn; **optional** temporary enable of wx-i9 Xweather unit.
 - **Never** run **two** Xweather writers (wx-core LaunchAgent + wx-i9 systemd) at once.

@@ -271,6 +271,7 @@ On wx-i9, **never** run without `SERVED_RADAR_BASE` — `/Volumes/` paths do not
 - `bin/serve_frames.py` — HTTP server on port 8080
 - systemd: `conf/systemd/mrw-serve-frames.service`
 - **Watchdog (wx-core)**: `bin/watchdog_all.sh` — every 5 min; checks KCLX/KJAX/MRMS manifest freshness; kills stuck processes (MRMS >20 min, coordinator >8 min); checks serve_frames health, restarts via SSH if down; kicks coordinator+MRMS after recovery; log rotation. **Requires** sudoers on wx-i9: `scott NOPASSWD: /bin/systemctl restart mrw-serve-frames`
+- **Host protect (wx-core)**: `bin/mrw_host_protect.sh` via `conf/launchd/com.mrw.host_protect.plist` — twice daily + RunAtLoad: **TIME_WAIT**, **HTTPS probe**, lightning LaunchAgent sanity; weekly **SSH multiplex** refresh. Install: `bin/install_host_protect_launchd.sh`. See **[MRW_OPERATIONAL_HARDENING.md](MRW_OPERATIONAL_HARDENING.md)**.
 - **Watchdog (wx-i9)**: `bin/watchdog_serve_frames.sh` (cron every 5 min) — optional; unified watchdog handles serve_frames via SSH
 
 ---
