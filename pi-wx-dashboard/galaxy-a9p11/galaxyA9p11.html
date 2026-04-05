@@ -58,8 +58,10 @@
       align-items:center;
       column-gap: 14px;
       margin: 0 0 15px;
-  margin-left:4px;
-}
+      margin-left: 4px;
+      width: 100%;
+      box-sizing: border-box;
+    }
     .title{
       font-size: var(--titleSize);
       letter-spacing: .10em;
@@ -71,11 +73,15 @@
     }
     .meta{
       display:flex;
-      gap:10px;
-      align-items:center;
-      justify-content:flex-start;
-      flex-wrap:wrap;
-      white-space:nowrap;
+      width: 100%;
+      box-sizing: border-box;
+      /* Full-width row: chips are visually scaled up — space-between avoids overlap/crowding */
+      justify-content: space-between;
+      align-items: center;
+      gap: clamp(10px, 1.8vw, 22px);
+      flex-wrap: nowrap;
+      white-space: nowrap;
+      padding: 6px 4px 0 8px;
     }
     .chip{
       border: 1px solid var(--border);
@@ -1066,6 +1072,12 @@ box-sizing:border-box; }
   display:inline-flex;               /* ensure transform applies cleanly */
   transform: scale(1.20);
   transform-origin: left center;
+  flex: 0 0 auto;
+}
+/* Status chip + dot: keep readable at row end */
+#hdr_updated{
+  flex: 0 0 auto;
+  transform-origin: right center;
 }
 
 
@@ -1101,7 +1113,7 @@ box-sizing:border-box; }
 <body class="deviceA9P11">
   <div class="wrap">
     <div class="topbar" style="margin-left:4px;">
-  <div class="meta" style="transform:translate(8px,6px);">
+  <div class="meta">
     <div class="chip" id="hdr_time">--:--</div>
     <div class="chip" id="hdr_date">--- --, ----</div>
     <div class="chip" id="hdr_sunrise">Sunrise --:--</div>
