@@ -1,0 +1,24 @@
+---
+description: Scott delegates MRW/weather ops to the agent — execute end-to-end without waiting for manual steps
+alwaysApply: true
+---
+
+# MRW — “You handle this” (full delegation)
+
+Scott treats the agent as **system architect + operator**. Unless he explicitly pulls scope back, **do the work yourself**: investigate, implement, commit, deploy, restart services, and verify.
+
+## Defaults
+
+- **Never** end with “here’s what you should run” when the environment can run it — **execute** commands (SSH, rsync, Vercel, builds, health curls).
+- **Proactive hardening**: if deploys, networking, or scripts risk production (e.g. rsync overwriting `serve_root` on wx-core), fix the automation and ship it.
+- **Multi-repo**: pair **radar-foundry** with sibling **moonriverweather-public** when work touches the public site. Push both to `origin/main` when changed.
+- **Production surfaces** (refresh after meaningful changes):
+  - **wx-core**: `bin/deploy_radar_foundry_to_wx_core.sh` (excludes `scratch`, `serve_root`, `out`, `.venv`).
+  - **wx-i9**: `bin/deploy_radar_foundry_to_wx_i9.sh`.
+  - **pi-wx / Galaxy A9+**: `bin/deploy_pi_wx_galaxy_a9p11.sh`.
+  - **moonriverweather.com**: `vercel --prod --yes` from `moonriverweather-public`.
+- **SSH / topology**: `docs/agent_multi_machine_setup.md`, `docs/PROJECT.md`.
+
+## Standing instruction
+
+Phrases like “book it”, “you handle it”, or “you’re my go-to” mean **default to full execution** in this workspace, not a one-time exception.

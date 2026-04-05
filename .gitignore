@@ -22,8 +22,10 @@ de421.bsp
 # OS
 .DS_Store
 
-# IDE
-.cursor/
+# IDE (keep shared Cursor rules in git)
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 
 # Backups
 backups/
