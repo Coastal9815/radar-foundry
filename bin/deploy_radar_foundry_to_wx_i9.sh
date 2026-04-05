@@ -17,4 +17,6 @@ rsync -avz --exclude '.venv' --exclude '__pycache__' --exclude '.git' --exclude 
   . "$DEST/"
 echo "Running setup_serve_root on $WX_I9 ..."
 ssh "$WX_I9" "cd ~/wx/radar-foundry && SERVED_RADAR_BASE=\$HOME/wx-data/served ./bin/setup_serve_root.sh"
+echo "Injecting Mapbox public token on $WX_I9 (repo ships YOUR_MAPBOX_PUBLIC_TOKEN placeholder) ..."
+ssh "$WX_I9" "cd ~/wx/radar-foundry && ./bin/inject_mapbox_token.sh"
 echo "Done. Lightning GeoJSON unchanged (produced by wx-core pipelines)."

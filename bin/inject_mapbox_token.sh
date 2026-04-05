@@ -7,12 +7,20 @@
 #   ./bin/inject_mapbox_token.sh
 #
 # Run before rsync/deploy to Cloudflare or wx-i9 if players show UI but blank maps.
+#
+# If MAPBOX_PUBLIC_TOKEN is unset, reads accessToken from conf/mapbox_config.json (same as local dev).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ -z "${MAPBOX_PUBLIC_TOKEN:-}" ]]; then
-  echo "MAPBOX_PUBLIC_TOKEN is not set (Mapbox public token starting with pk.)" >&2
-  exit 1
+  CONF="$ROOT/conf/mapbox_config.json"
+  if [[ -f "$CONF" ]]; then
+    MAPBOX_PUBLIC_TOKEN="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1],encoding=\"utf-8\"))[\"accessToken\"])" "$CONF")"
+  else
+    echo "MAPBOX_PUBLIC_TOKEN is not set and $CONF not found" >&2
+    exit 1
+  fi
 fi
+export MAPBOX_PUBLIC_TOKEN
 export RF_ROOT="$ROOT"
 
 python3 <<'PY'
@@ -35,7 +43,7 @@ for path in (root / "player").rglob("index.html"):
     n += 1
     print("Updated", path.relative_to(root))
 if n == 0:
-    print("No files contained", needle, file=sys.stderr)
-    sys.exit(1)
+    print("No files contained", needle, "(maps may already use a real token)", file=sys.stderr)
+    sys.exit(0)
 print("Injected token into", n, "player file(s).")
 PY
