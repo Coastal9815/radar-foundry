@@ -145,6 +145,14 @@
     return map[s] != null ? map[s] : 0;
   }
 
+  function nwsDisplaySeverityRank(alert) {
+    var ev = String(alert.event || "").toLowerCase();
+    var isWatch = ev.indexOf("watch") !== -1 && ev.indexOf("warning") === -1;
+    var raw = nwsSeverityRank(alert.severity);
+    if (isWatch) return Math.min(raw, 3);
+    return raw;
+  }
+
   function sortNwsAlerts(alerts) {
     var order = ["Tornado", "Tsunami", "Severe Thunderstorm", "Extreme Wind", "Flash Flood", "Tropical", "Blizzard"];
     return alerts.slice().sort(function (a, b) {
@@ -311,7 +319,7 @@
         ? sortedNws.slice(0, 3).map(function (a) {
             var exp = formatExpires(a.expires);
             var text = exp ? a.event + " until " + exp : a.event;
-            return { text: text, severity: nwsSeverityRank(a.severity) };
+            return { text: text, severity: nwsDisplaySeverityRank(a) };
           })
         : [];
 
@@ -324,7 +332,7 @@
 
     var severity = 0;
     if (sortedNws.length > 0) {
-      severity = Math.max(severity, nwsSeverityRank(sortedNws[0].severity));
+      severity = Math.max(severity, nwsDisplaySeverityRank(sortedNws[0]));
     }
     if (mrwConditions.length > 0) severity = Math.max(severity, 1);
     for (var ci = 0; ci < mrwConditions.length; ci++) {

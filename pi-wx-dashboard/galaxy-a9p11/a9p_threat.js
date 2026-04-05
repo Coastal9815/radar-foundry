@@ -51,7 +51,26 @@
     // Apply both (some CSS uses background-color)
     dotEl.style.backgroundColor = bg;
     dotEl.style.background = bg;
-  }function mrwDotForLocal(localStr){
+  }
+
+  /** WATCH never maps to RED: prefer headline words over upstream level/color mismatches. */
+  function threatTextLevel(threatStr) {
+    const t = (threatStr || "").toString().toLowerCase();
+    if (!t) return "";
+    if (/\bwarning\b/.test(t) || /\bemergency\b/.test(t)) return "WARNING";
+    if (/\bwatch\b/.test(t)) return "WATCH";
+    return "";
+  }
+
+  function effectiveNwsLevel(nws) {
+    const fromText = threatTextLevel((nws && nws.threat) ? nws.threat : "");
+    if (fromText) return fromText;
+    const lvl = (nws && nws.level ? String(nws.level).trim().toUpperCase() : "");
+    if (lvl === "WARNING" || lvl === "WATCH" || lvl === "ADVISORY") return lvl;
+    return lvl || "NONE";
+  }
+
+  function mrwDotForLocal(localStr){
     // localStr format: "MRW: CLEAR" or "MRW: AIR LIMIT/WIND" etc
     const s = (localStr || "").toString().toUpperCase();
     if (!s || s.includes("MRW: CLEAR")) return "NONE";
@@ -64,25 +83,29 @@
     return "GRAY";
   }
   function nwsDotToken(nws){
-    const lvl = (nws && nws.level ? String(nws.level).trim().toUpperCase() : "");
-    // Prefer LEVEL semantics for dot color (matches A9 intent)
+    const lvl = effectiveNwsLevel(nws);
     if (lvl === "WARNING") return "RED";
     if (lvl === "WATCH") return "YELLOW";
     if (lvl === "ADVISORY") return "YELLOW";
 
     const color = (nws && nws.color ? String(nws.color).trim().toUpperCase() : "");
-    if (color) return color;
-
+    if (color) {
+      if (/\bwatch\b/.test(((nws && nws.threat) || "").toString().toLowerCase()) &&
+          !/\bwarning\b/.test(((nws && nws.threat) || "").toString().toLowerCase())) {
+        return "YELLOW";
+      }
+      return color;
+    }
     return "NONE";
-  }function overallFrom(nwsLevel, mrwLocal){
-    const lvl = (nwsLevel || "NONE").toString().toUpperCase();
+  }
+  function overallFrom(nws, mrwLocal){
+    const lvl = effectiveNwsLevel(nws || {});
     const local = (mrwLocal || "").toString().toUpperCase();
 
     if (lvl === "WARNING") return { txt: "ALERT", dot: "RED" };
     if (lvl === "WATCH")   return { txt: "CAUTION", dot: "YELLOW" };
     if (lvl === "ADVISORY")return { txt: "CAUTION", dot: "YELLOW" };
 
-    // no NWS; if MRW has active items, show CAUTION
     if (local && !local.includes("MRW: CLEAR")) return { txt: "CAUTION", dot: mrwDotForLocal(local) || "GRAY" };
 
     return { txt: "CLEAR", dot: "NONE" };
@@ -108,7 +131,7 @@
       setDotColor($("tr_mrw_dot"), mrwDotForLocal(local));
 
       // Row 1: Overall
-      const ov = overallFrom(nws.level, local);
+      const ov = overallFrom(nws, local);
       setTextSticky("tr_overall_txt", mrw15(ov.txt));
       setDotColor($("tr_overall_dot"), ov.dot);
 
