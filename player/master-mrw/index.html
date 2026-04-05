@@ -13,11 +13,11 @@
       --edge-pad: 20px;
       --left-edge: 20px;
       --right-edge: 3819px;
-      --top-edge: 126px;
+      --top-edge: 140px;
       --bottom-edge: 2140px;
       --content-w: 3799px;
-      --content-h: 2014px;
-      --threat-h: 126px;
+      --content-h: 2000px;
+      --threat-h: 140px;
       --gap: 20px;
       --pad: 20px;
       --bg: #1a1d24;
@@ -55,6 +55,9 @@
       border-bottom: 1px solid rgba(0, 0, 0, 0.12);
       color: #000;
       transition: background-color 0.15s ease, box-shadow 0.15s ease, border-bottom-color 0.15s ease;
+      position: relative;
+      z-index: 2;
+      overflow: visible;
     }
     .threatBar .content { width: var(--content-w); }
     .threatBarContent {
@@ -105,14 +108,14 @@
       flex-direction: column;
       gap: 1px;
       justify-content: center;
+      align-items: flex-start;
       min-width: 0;
-      max-height: 126px;
-      overflow: hidden;
+      overflow: visible;
     }
     .threatLine {
       font-size: 50px;
       font-weight: 700;
-      line-height: 1.2;
+      line-height: 1.32;
       color: #0f172a;
     }
     .threatLine--nws0 { color: #0f172a; }
@@ -155,7 +158,7 @@
       font-weight: 400; letter-spacing: 0.5px;
     }
 
-    /* Main grid — LOCKED: left=20, right=3819, top=126, bottom=2140 */
+    /* Main grid — LOCKED: left=20, right=3819, top=140, bottom=2140 */
     .grid {
       flex: 0 0 var(--content-h);
       display: grid;
