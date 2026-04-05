@@ -5,14 +5,15 @@
 
   const INNER_MI = 10;
   const OUTER_MI = 25;
-  const WINDOW_MS = 20 * 60 * 1000;
+  /* Match master-mrw / site alerts.ts: consider strikes up to 30 min old */
+  const WINDOW_MS = 30 * 60 * 1000;
   const WINDOW_SEC = Math.floor(WINDOW_MS / 1000);
   const KM_PER_MI = 1.609344;
   const OUTER_KM = OUTER_MI * KM_PER_MI;
 
   const LTG_GEOJSON_DEFAULT = "https://radar.moonriverweather.com/lightning_points_xweather_local.geojson";
 
-  /** Timestamp (ms) of the most recent ≤10 mi strike we've observed; drives 20 min red hold */
+  /** Timestamp (ms) of the most recent ≤10 mi strike we've observed; drives 30 min red hold */
   let lastInnerStrikeAtMs = 0;
   let lastLtgOk = false;
 
@@ -44,16 +45,57 @@
   }
 
   async function fetchLightningGeoJSON() {
-    const url =
-      (typeof window !== "undefined" && window.A9P_LIGHTNING_GEOJSON_URL) ||
-      LTG_GEOJSON_DEFAULT;
-    const r = await fetch(url, { cache: "no-store", credentials: "omit" });
-    if (!r.ok) throw new Error("ltg " + r.status);
-    return await r.json();
+    const candidates = [];
+    if (typeof window !== "undefined" && window.A9P_LIGHTNING_GEOJSON_URL) {
+      candidates.push(String(window.A9P_LIGHTNING_GEOJSON_URL).trim());
+    }
+    if (typeof window !== "undefined" && window.A9P_LIGHTNING_LAN_URL) {
+      candidates.push(String(window.A9P_LIGHTNING_LAN_URL).trim());
+    }
+    try {
+      if (typeof location !== "undefined" && location.origin) {
+        candidates.push(
+          location.origin + "/data/lightning_points_xweather_local.geojson"
+        );
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    candidates.push(LTG_GEOJSON_DEFAULT);
+
+    const seen = new Set();
+    const urls = [];
+    for (let i = 0; i < candidates.length; i++) {
+      const u = candidates[i];
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      urls.push(u);
+    }
+
+    let lastErr;
+    for (let j = 0; j < urls.length; j++) {
+      try {
+        const r = await fetch(urls[j], { cache: "no-store", credentials: "omit" });
+        if (!r.ok) {
+          lastErr = new Error("ltg " + urls[j] + " " + r.status);
+          continue;
+        }
+        return await r.json();
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error("ltg: all sources failed");
   }
 
   function num(v) {
-    return typeof v === "number" && !isNaN(v) ? v : undefined;
+    if (typeof v === "number" && !isNaN(v)) return v;
+    if (v === undefined || v === null) return undefined;
+    if (typeof v === "string" && String(v).trim() !== "") {
+      const n = Number(v);
+      return !isNaN(n) ? n : undefined;
+    }
+    return undefined;
   }
 
   function setDotColor(dotEl, token) {
@@ -127,7 +169,7 @@
   }
 
   /**
-   * Scans Xweather GeoJSON: strikes ≤25 mi and ≤20 min old.
+   * Scans Xweather GeoJSON: strikes ≤25 mi and ≤30 min old.
    * Updates lastInnerStrikeAtMs when any ≤10 mi strike is present.
    * Returns display mode: 'close' | 'yellow' | 'none'
    */

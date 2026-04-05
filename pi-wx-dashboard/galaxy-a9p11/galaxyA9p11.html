@@ -1956,6 +1956,12 @@ function mrwAlert15(s){
 
 
 <script>
+/* A9P_LIGHTNING_LAN_V1 — Galaxy loads from pi-wx; GeoJSON is published on wx-i9 serve_frames.
+   Tablet WebViews often fail https://radar.moonriverweather.com (Cloudflare). LAN HTTP + CORS * works. */
+window.A9P_LIGHTNING_LAN_URL = "http://192.168.2.2:8080/lightning_points_xweather_local.geojson";
+</script>
+
+<script>
 // A9P_THREAT_LOADER_V1 — load external Threat JS
 (function(){
   try{
