@@ -11,6 +11,9 @@ WX_I9="${WX_I9:-wx-i9}"
 DEST="${DEST:-$WX_I9:~/wx/radar-foundry}"
 BASE_URL="${SYNC_VERIFY_URL:-http://192.168.2.2:8080}"
 
+echo "Removing bogus player/player on $WX_I9 (if any) ..."
+ssh "$WX_I9" "rm -rf \"\$HOME/wx/radar-foundry/player/player\""
+
 echo "Syncing to $DEST (exclude serve_root) ..."
 rsync -avz --exclude '.venv' --exclude '__pycache__' --exclude '.git' --exclude 'serve_root' \
   . "$DEST"/

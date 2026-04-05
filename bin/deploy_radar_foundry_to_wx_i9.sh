@@ -9,6 +9,9 @@ set -e
 cd "$(dirname "$0")/.."
 WX_I9="${WX_I9:-wx-i9}"
 DEST="${DEST:-$WX_I9:~/wx/radar-foundry}"
+# Nested player/player (mistaken rsync of a bad symlink) breaks deploy with exit 23 — remove before sync.
+echo "Ensuring no bogus \$HOME/wx/radar-foundry/player/player on $WX_I9 ..."
+ssh "$WX_I9" "rm -rf \"\$HOME/wx/radar-foundry/player/player\""
 echo "Deploying code to $DEST (exclude serve_root) ..."
 rsync -avz --exclude '.venv' --exclude '__pycache__' --exclude '.git' --exclude 'serve_root' \
   . "$DEST/"

@@ -57,6 +57,11 @@ fi
 [ -f "$PROJECT_ROOT/out/basemap_MRWcenter_1600.png" ] && ln -sf "$PROJECT_ROOT/out/basemap_MRWcenter_1600.png" "$ROOT/basemaps/basemap_MRWcenter_1600.png"
 [ -f "$PROJECT_ROOT/out/basemap_MRWcenter_1600.svg" ] && ln -sf "$PROJECT_ROOT/out/basemap_MRWcenter_1600.svg" "$ROOT/basemaps/basemap_MRWcenter_1600.svg"
 
+# serve_root/player must be one symlink to repo player/ — never a real directory (breaks players path).
+if [ -e "$ROOT/player" ] && [ ! -L "$ROOT/player" ]; then
+  echo "WARN: Removing non-symlink serve_root/player (use symlink to \$PROJECT_ROOT/player)" >&2
+  rm -rf "$ROOT/player"
+fi
 ln -sf "$PROJECT_ROOT/player" "$ROOT/player"
 
 # NWS alerts: fetch SVR/TOR/TOR watch/SVR watch/SWS for GA,SC,FL; create alerts.json if Python available

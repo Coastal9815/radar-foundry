@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <!-- Resolve modules/*.js correctly even when the URL is /player/master-mrw (no trailing slash) -->
+  <base href="/player/master-mrw/" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>Master MRW Dashboard</title>
@@ -44,7 +46,7 @@
       flex-direction: column;
     }
 
-    /* Threat bar */
+    /* Threat bar — NWS + MRW alerts (parity with moonriverweather.com AlertBox) */
     .threatBar {
       flex: 0 0 var(--top-edge);
       width: var(--screen-w);
@@ -52,14 +54,103 @@
       align-items: center;
       padding: 0 var(--pad);
       background: #e8e8e8;
-      border-bottom: 1px solid var(--border);
-      font-size: 40px;
-      font-weight: 700;
-      letter-spacing: 1.4px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.12);
       color: #000;
+      transition: background-color 0.15s ease, box-shadow 0.15s ease, border-bottom-color 0.15s ease;
     }
     .threatBar .content { width: var(--content-w); }
-    .threatBar .placeholder { color: #333; }
+    .threatBarContent {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      width: 100%;
+      min-height: 0;
+    }
+    .threatHeading {
+      margin: 0;
+      flex: 0 0 auto;
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      line-height: 1;
+    }
+    .threatHeading--default { color: #64748b; }
+    .threatHeading--yellow { color: #b45309; }
+    .threatHeading--flash-red {
+      color: #b91c1c;
+      animation: threatFlashTitle 1s ease-in-out infinite;
+    }
+    .threatMain {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      flex: 1;
+      min-width: 0;
+    }
+    .threatDots {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding-top: 10px;
+    }
+    .threatDot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #94a3b8;
+      animation: threatFlashDot 1.2s ease-in-out infinite;
+    }
+    .threatLines {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      justify-content: center;
+      min-width: 0;
+      max-height: 90px;
+      overflow: hidden;
+    }
+    .threatLine {
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.18;
+      color: #0f172a;
+    }
+    .threatLine--nws0 { color: #0f172a; }
+    .threatLine--nws2 { color: #b45309; }
+    .threatLine--nws3 { color: #9a3412; }
+    .threatLine--nws4 { color: #b91c1c; }
+    .threatLine--mrw { color: #1e293b; font-weight: 650; }
+    .threatLine--mrwLightning { color: #b91c1c; font-weight: 750; }
+    .threatLine--allClear {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: #334155;
+    }
+    .threatLine--warn { color: #b45309; }
+    .threatBar--sev1 { background: #eceff2; }
+    .threatBar--sev2 { background: #fffbeb; }
+    .threatBar--sev3 { background: #ffedd5; }
+    .threatBar--sev4 { background: #fee2e2; }
+    .threatBar--pulseOn {
+      background: #fecaca !important;
+      box-shadow: 0 0 22px rgba(220, 38, 38, 0.38);
+      border-bottom-color: rgba(185, 28, 28, 0.9);
+    }
+    .threatBar--pulseReduced {
+      box-shadow: inset 0 0 0 2px rgba(185, 28, 28, 0.75);
+      background: #fee2e2 !important;
+    }
+    @keyframes threatFlashTitle {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.52; }
+    }
+    @keyframes threatFlashDot {
+      0%, 100% { opacity: 0.35; transform: scale(0.94); }
+      50% { opacity: 1; transform: scale(1); }
+    }
 
     /* Version badge */
     .verBadge {
@@ -348,10 +439,14 @@
 </head>
 <body>
   <div class="wrap">
-    <!-- Threat bar -->
-    <header class="threatBar">
-      <div class="content">
-        <span class="placeholder" id="threat_txt">Conditions / Alerts — placeholder</span>
+    <!-- Threat bar — Weather Alerts (NWS GAZ119 + MRW local), see modules/mrw-alerts.js -->
+    <header class="threatBar" id="threat_bar" aria-label="Alerts and conditions">
+      <div class="content threatBarContent">
+        <h2 class="threatHeading threatHeading--default" id="threat_title">Weather Alerts</h2>
+        <div class="threatMain">
+          <div class="threatDots" id="threat_dots" aria-hidden="true"></div>
+          <div class="threatLines" id="threat_lines"><div class="threatLine">Loading alerts…</div></div>
+        </div>
       </div>
     </header>
 
@@ -481,6 +576,7 @@
     // Config: pi-wx data via same-origin proxy (serve_frames proxies /pi-wx-data/* -> 192.168.2.174)
     // Use explicit origin so fetch works regardless of how the page was loaded (localhost vs IP vs hostname)
     const DATA_BASE = (typeof location !== "undefined" && location.origin) ? location.origin + "/pi-wx-data" : "/pi-wx-data";
+    window.MRW_DATA_BASE = DATA_BASE;
 
     function $(id) { return document.getElementById(id); }
     function setText(id, v) { const el = $(id); if (el && v != null) el.textContent = String(v); }
@@ -727,5 +823,6 @@
       setTimeout(condPoll, 5000);
     })();
   </script>
+  <script src="modules/mrw-alerts.js?v=20260405"></script>
 </body>
 </html>
