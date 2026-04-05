@@ -67,7 +67,7 @@
     .threatHeading {
       margin: 0;
       flex: 0 0 auto;
-      font-size: 42px;
+      font-size: 50px;
       font-weight: 800;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -106,13 +106,14 @@
       gap: 2px;
       justify-content: center;
       min-width: 0;
-      max-height: 90px;
+      /* ~2× 50px lines + gap; bar stays --top-edge 104px */
+      max-height: 102px;
       overflow: hidden;
     }
     .threatLine {
-      font-size: 38px;
+      font-size: 50px;
       font-weight: 700;
-      line-height: 1.08;
+      line-height: 1;
       color: #0f172a;
     }
     .threatLine--nws0 { color: #0f172a; }
@@ -121,7 +122,6 @@
     .threatLine--nws4 { color: #b91c1c; }
     .threatLine--mrw { color: #1e293b; font-weight: 650; }
     .threatLine--mrwLightning { color: #b91c1c; font-weight: 750; }
-    /* Same type size as other .threatLine; only color + weight differ */
     .threatLine--allClear {
       color: #334155;
       font-weight: 800;
