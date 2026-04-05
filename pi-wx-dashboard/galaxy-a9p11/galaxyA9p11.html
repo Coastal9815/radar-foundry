@@ -1022,8 +1022,8 @@ box-sizing:border-box; }
   left:-6px;
 }
 
-
-9px;
+.a9ThreatText{
+  font-size:20px;
   font-weight:900;
   letter-spacing:.06em;
   color: rgba(255,255,255,0.92);
@@ -1036,6 +1036,28 @@ box-sizing:border-box; }
   display:inline-block;
   transform: scaleX(0.78);
   transform-origin: left center;
+}
+
+/* LTG row — Xweather proximity (see a9p_threat.js) */
+.a9ThreatText--ltgYellow{
+  color: #f0b429 !important;
+}
+.a9ThreatText--ltgClose{
+  color: #f87171 !important;
+  font-weight: 900 !important;
+  animation: a9LtgCloseFlash 1s ease-in-out infinite;
+}
+@keyframes a9LtgCloseFlash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.42; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .a9ThreatText--ltgClose {
+    animation: none;
+    opacity: 1;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 
 
