@@ -41,11 +41,14 @@ Docs assumptions (Xweather Weather API, verified 2025-03):
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -198,6 +201,64 @@ def count_records_and_timestamps(path: Path) -> tuple[int, str | None, str | Non
     return count, oldest, newest
 
 
+def _https_get_code_body(url: str, timeout: float = 30) -> tuple[int, str]:
+    """GET URL over HTTPS. Prefer urllib; on OS-level connect failure, retry via curl -4 (IPv4 only).
+
+    weather-core occasionally hits macOS Errno 49 (EADDRNOTAVAIL) from urllib's default stack;
+    curl -4 reliably uses IPv4 to data.api.xweather.com.
+    """
+    headers = {"Accept": "application/json", "User-Agent": "mrw-lightning-xweather/1"}
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.getcode(), r.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, (e.read().decode() if e.fp else "")
+    except OSError:
+        pass
+    tout = str(max(1, int(timeout)))
+    hdr_f = bod_f = None
+    try:
+        h = tempfile.NamedTemporaryFile(delete=False, suffix=".hdr")
+        b = tempfile.NamedTemporaryFile(delete=False, suffix=".body")
+        hdr_f, bod_f = h.name, b.name
+        h.close()
+        b.close()
+        curl = subprocess.run(
+            [
+                "curl",
+                "-4",
+                "-sS",
+                "--max-time",
+                tout,
+                "-D",
+                hdr_f,
+                "-o",
+                bod_f,
+                "-H",
+                "Accept: application/json",
+                url,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if curl.returncode != 0 or not Path(hdr_f).exists():
+            raise OSError(curl.stderr.strip() or "curl -4 failed") from None
+        hdr_text = Path(hdr_f).read_text(encoding="utf-8", errors="replace")
+        status_line = hdr_text.splitlines()[0] if hdr_text else ""
+        parts = status_line.split()
+        code = int(parts[1]) if len(parts) > 2 else 0
+        body = Path(bod_f).read_text(encoding="utf-8", errors="replace")
+        return code, body
+    finally:
+        for pth in (hdr_f, bod_f):
+            if pth:
+                try:
+                    Path(pth).unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+
 def _extract_strikes_from_response(data: object) -> list[dict]:
     """Extract strike list from API response (handles raw array or wrapper)."""
     if isinstance(data, list):
@@ -237,9 +298,16 @@ def fetch_xweather(
     if radius_km is not None:
         params.append(f"radius={radius_km}")
     url = f"{XWEATHER_BASE}/closest?" + "&".join(params)
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        data = json.loads(r.read().decode())
+    code, body = _https_get_code_body(url, timeout=30)
+    if code != 200:
+        raise urllib.error.HTTPError(
+            url,
+            code,
+            f"HTTP {code}",
+            {},
+            io.BytesIO(body.encode()),
+        )
+    data = json.loads(body)
     return _extract_strikes_from_response(data)
 
 
@@ -260,14 +328,7 @@ def run_probe(client_id: str, client_secret: str) -> int:
     print("--- Xweather lightning probe (limit=1000, radius=100km) ---")
     print(f"Request URL: {url}")
 
-    try:
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            status = getattr(r, "status", None) or (r.getcode() if hasattr(r, "getcode") else 200)
-            body = r.read().decode()
-    except urllib.error.HTTPError as e:
-        status = e.code
-        body = e.read().decode() if e.fp else ""
+    status, body = _https_get_code_body(url, timeout=30)
 
     print(f"HTTP status: {status}")
 

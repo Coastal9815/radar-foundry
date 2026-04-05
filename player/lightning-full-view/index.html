@@ -257,15 +257,15 @@
     }
     const ageSec = (Date.now() - new Date(ts).getTime()) / 1000;
     freshnessEl.classList.remove("live", "stale", "old");
-    if (ageSec <= 15) {
+    if (ageSec <= 90) {
       freshnessEl.classList.add("live");
-      freshnessEl.title = "Live (within 15s)";
-    } else if (ageSec <= 30) {
+      freshnessEl.title = "Live (feed updated within 90s)";
+    } else if (ageSec <= 300) {
       freshnessEl.classList.add("stale");
-      freshnessEl.title = "Stale (" + Math.round(ageSec) + "s old)";
+      freshnessEl.title = "Stale (" + Math.round(ageSec) + "s since last file update)";
     } else {
       freshnessEl.classList.add("old");
-      freshnessEl.title = "Old (" + Math.round(ageSec) + "s old)";
+      freshnessEl.title = "Old (" + Math.round(ageSec) + "s — check lightning pipeline)";
     }
   }
 
