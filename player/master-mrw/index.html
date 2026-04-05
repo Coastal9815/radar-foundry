@@ -2,8 +2,6 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <!-- Resolve modules/*.js correctly even when the URL is /player/master-mrw (no trailing slash) -->
-  <base href="/player/master-mrw/" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>Master MRW Dashboard</title>
@@ -627,12 +625,12 @@
     const SLOTS = ["current-temp", "humidity", "rain-current", "rain-accumulation", "air-quality", "celestial", null, null];
     const MODULES = {};
   </script>
-  <script src="modules/current-temp.js"></script>
-  <script src="modules/humidity.js?v=11"></script>
-  <script src="modules/rain-current.js"></script>
-  <script src="modules/rain-accumulation.js?v=4"></script>
-  <script src="modules/air-quality.js?v=6"></script>
-  <script src="modules/celestial.js"></script>
+  <script src="/player/master-mrw/modules/current-temp.js"></script>
+  <script src="/player/master-mrw/modules/humidity.js?v=11"></script>
+  <script src="/player/master-mrw/modules/rain-current.js"></script>
+  <script src="/player/master-mrw/modules/rain-accumulation.js?v=4"></script>
+  <script src="/player/master-mrw/modules/air-quality.js?v=6"></script>
+  <script src="/player/master-mrw/modules/celestial.js"></script>
   <script>
     function mountModules() {
       const grid = document.getElementById("leftGrid");
@@ -823,6 +821,6 @@
       setTimeout(condPoll, 5000);
     })();
   </script>
-  <script src="modules/mrw-alerts.js?v=20260405"></script>
+  <script src="/player/master-mrw/modules/mrw-alerts.js?v=20260406"></script>
 </body>
 </html>
