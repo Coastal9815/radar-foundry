@@ -31,6 +31,10 @@ SSH_TIMEOUT = 30
 SCP_TIMEOUT = 20
 MAX_RETRIES = 3
 RETRY_DELAY = 2
+# One batched scp per cycle (was 3× scp every 3s → thousands of TIME_WAITs → ephemeral port exhaustion on wx-core).
+GEO_GENERATOR_INTERVAL_SEC = 8
+SERVE_ROOT = PROJECT_ROOT / "serve_root"
+WX_I9_SERVE = "wx-i9:~/wx/radar-foundry/serve_root/"
 
 
 def run_ssh(cmd: str) -> subprocess.CompletedProcess:
@@ -277,17 +281,49 @@ def main() -> int:
 
     print("lightning_nex_tail: polling every", args.interval, "s. Output:", "remote" if args.output_remote else "local")
 
+    def _push_lightning_geo_to_wx_i9() -> None:
+        """Push generated map/summary files in a single scp (one TCP session to wx-i9:22)."""
+        names = [
+            SERVE_ROOT / "lightning_points.geojson",
+            SERVE_ROOT / "lightning_points_v2.geojson",
+            SERVE_ROOT / "lightning_summary.json",
+        ]
+        paths = [str(p) for p in names if p.is_file()]
+        if not paths:
+            return
+        for attempt in range(MAX_RETRIES):
+            try:
+                r = subprocess.run(
+                    ["scp", "-q", "-o", "ConnectTimeout=5", *paths, WX_I9_SERVE],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                )
+                if r.returncode == 0:
+                    return
+                if r.stderr or r.stdout:
+                    print(f"geo scp batch failed: {r.stderr or r.stdout}", flush=True)
+            except subprocess.TimeoutExpired:
+                pass
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY)
+
     def _run_geo_generators() -> None:
-        """Run GeoJSON generators every 3s for near real-time map updates."""
+        """Run GeoJSON generators locally, then one batched scp to wx-i9."""
         py = PROJECT_ROOT / ".venv" / "bin" / "python"
         if not py.exists():
             py = Path(sys.executable)
         while True:
             if args.output_remote:
                 try:
-                    for script in ["generate_lightning_points.py", "generate_lightning_points_v2.py", "generate_lightning_summary.py"]:
+                    for script in [
+                        "generate_lightning_points.py",
+                        "generate_lightning_points_v2.py",
+                        "generate_lightning_summary.py",
+                    ]:
                         r = subprocess.run(
-                            [str(py), str(PROJECT_ROOT / "bin" / script), "--remote"],
+                            [str(py), str(PROJECT_ROOT / "bin" / script)],
                             cwd=str(PROJECT_ROOT),
                             capture_output=True,
                             text=True,
@@ -295,9 +331,10 @@ def main() -> int:
                         )
                         if r.returncode != 0:
                             print(f"{script} failed: {r.stderr or r.stdout}", flush=True)
+                    _push_lightning_geo_to_wx_i9()
                 except Exception as e:
                     print(f"geo generator error: {e}", flush=True)
-            time.sleep(3)
+            time.sleep(GEO_GENERATOR_INTERVAL_SEC)
 
     if args.output_remote:
         geo_thread = threading.Thread(target=_run_geo_generators, daemon=True)
