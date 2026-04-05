@@ -190,7 +190,8 @@
       setDotColor(dotEl, "RED");
       applyLtgTextClass(txtEl, "close");
     } else if (mode === "yellow") {
-      setTextSticky("tr_ltg_txt", mrw15("Lightning 10-25"));
+      /* ≤15 chars for mrw15 (was "Lightning 10-25" = 16) */
+      setTextSticky("tr_ltg_txt", mrw15("Ltg 10-25 mi"));
       setDotColor(dotEl, "YELLOW");
       applyLtgTextClass(txtEl, "yellow");
     } else {
@@ -201,14 +202,16 @@
   }
 
   async function poll() {
-    let tj;
-    let ltgJson = null;
+    /* Threat strip and lightning are independent: if /data/threat_strip.json is missing
+     * or flaky on the Pi, we must still refresh LTG from Xweather GeoJSON. */
+    let tj = { nws: {}, local: "" };
     try {
       tj = await fetchJSON("/data/threat_strip.json?ts=" + Date.now());
     } catch (e) {
-      return;
+      /* non-fatal */
     }
 
+    let ltgJson = null;
     try {
       ltgJson = await fetchLightningGeoJSON();
       lastLtgOk = true;
@@ -219,8 +222,8 @@
       /* sticky LTG on transient errors */
     }
 
-    const nws = tj.nws || {};
-    const local = (tj.local || "").toString().toUpperCase();
+    const nws = (tj && tj.nws) || {};
+    const local = ((tj && tj.local) || "").toString().toUpperCase();
 
     const nwsThreat = ((nws.threat || "") + "").toUpperCase();
     const nwsTxt = mrw15(nwsThreat ? nwsThreat : "NONE");
