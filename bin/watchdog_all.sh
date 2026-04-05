@@ -28,6 +28,18 @@ MAX_COORDINATOR_MIN=10 # radar_loop_coordinator: ~2-3 min; 10 min = truly stuck
 
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) watchdog start" >> "$LOG"
 
+# --- 0. Host TCP / HTTPS sanity (catches ephemeral port exhaustion before all HTTPS fails silently) ---
+tw=$(netstat -an -p tcp 2>/dev/null | awk '/TIME_WAIT/{n++} END{print n+0}')
+if [[ "$tw" -gt 10000 ]]; then
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) WARN: TIME_WAIT tcp sockets=$tw (~16k ephemeral ports on macOS; storms of scp/ssh to wx-i9 caused 2026-04 outage)" >> "$LOG"
+fi
+if [[ "$tw" -gt 14000 ]]; then
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) CRITICAL: TIME_WAIT=$tw — new outbound TCP likely failing; investigate ssh/scp churn or reboot wx-core" >> "$LOG"
+fi
+if ! curl -4 -fsS -o /dev/null -m 8 https://www.apple.com/ 2>/dev/null; then
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) CRITICAL: outbound HTTPS probe failed (wx-core cannot use TCP 443 — Xweather & curl break)" >> "$LOG"
+fi
+
 action=0
 
 # --- 1. Kill stuck processes (running too long) ---

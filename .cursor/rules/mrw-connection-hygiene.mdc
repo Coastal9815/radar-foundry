@@ -1,0 +1,16 @@
+---
+description: MRW — avoid SSH/scp connection storms, deploy clobbering prod, and silent TCP exhaustion
+alwaysApply: true
+---
+
+ # MRW connection and deploy hygiene
+
+When changing **automation that hits wx-i9 or Lightning-PC** from **wx-core**:
+
+1. **Batch remote copies** — prefer **one `scp`/`rsync`** per cycle over many separate `scp` invocations in a tight loop.
+2. **Reuse SSH** — prefer **`conf/ssh/mrw-multiplex.conf`** (ControlMaster) on wx-core; document new high-frequency callers.
+3. **Deploy discipline** — `deploy_radar_foundry_to_wx_core.sh` must **not** sync `serve_root/` or `out/` from a dev Mac (wx-core is source of truth for generated products there).
+4. **Watch collateral damage** — if adding loops with **subprocess ssh/scp**, estimate **connections per minute**; macOS ephemeral ports are ~**16k**; sustained storms + **TIME_WAIT** caused full **HTTPS outage** on wx-core in 2026-04.
+5. **Watchdog** — `watchdog_all.sh` logs high **TIME_WAIT** and **HTTPS probe** failures; extend it when adding new failure modes.
+
+See **`docs/MRW_OPERATIONAL_HARDENING.md`**.

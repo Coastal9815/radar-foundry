@@ -173,6 +173,7 @@ Browser: player/mrms/, player/kclx/, etc.
 - **hyper-local-x**: Xweather-only hyper-local map at `/player/hyper-local-x/` (see `docs/lightning/XWEATHER_DEPLOYMENT.md`)
 - **Scheduler**: `conf/launchd/com.mrw.lightning_xweather_fetch.plist` (RunAtLoad, KeepAlive)
 - **Credentials**: `~/.mrw/xweather.env` (XWEATHER_CLIENT_ID, XWEATHER_CLIENT_SECRET)
+- **Emergency only**: wx-i9 `mrw-lightning-xweather-fetch.service` — keep **disabled** if wx-core is healthy (never run two writers). See **[MRW_OPERATIONAL_HARDENING.md](MRW_OPERATIONAL_HARDENING.md)**.
 
 ---
 
@@ -312,6 +313,7 @@ Or run: `./bin/backup_restore_point.sh`
 
 | Doc | Purpose |
 |-----|---------|
+| [MRW_OPERATIONAL_HARDENING.md](MRW_OPERATIONAL_HARDENING.md) | SSH/scp hygiene, TIME_WAIT / HTTPS outage prevention, Xweather host of record |
 | [DEVELOPMENT_ARCHITECTURE.md](DEVELOPMENT_ARCHITECTURE.md) | Local-first dev on Office Mac; deploy to wx-core/wx-i9 |
 | [DEVELOPMENT_IMPLEMENTATION_PLAN.md](DEVELOPMENT_IMPLEMENTATION_PLAN.md) | Seeding, deploy flow, script categories |
 | [MRW_PROJECTS.md](MRW_PROJECTS.md) | Multi-root workspace; radar-foundry + moonriverweather-public |

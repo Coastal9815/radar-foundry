@@ -1,5 +1,6 @@
+# Normally DISABLED — wx-core owns Xweather (LaunchAgent). Enable only as emergency fallback.
 [Unit]
-Description=MRW Xweather lightning fetch (GeoJSON to local serve_root on wx-i9)
+Description=MRW Xweather lightning fetch (fallback on wx-i9; primary is wx-core)
 After=network-online.target
 Wants=network-online.target
 

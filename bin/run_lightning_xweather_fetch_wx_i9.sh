@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Xweather lightning loop on wx-i9: fetch has HTTPS; write GeoJSON into local serve_root.
-# Credentials: ~/.mrw/xweather.env (same as weather-core).
-# systemd: conf/systemd/user/mrw-lightning-xweather-fetch.service
+# FALLBACK ONLY — canonical Xweather loop runs on wx-core (LaunchAgent com.mrw.lightning_xweather_fetch).
+# Use this + systemd unit only if wx-core cannot reach HTTPS for an extended period.
+# Credentials: ~/.mrw/xweather.env
+# systemd: conf/systemd/user/mrw-lightning-xweather-fetch.service (normally disabled)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [[ -f "$HOME/.mrw/xweather.env" ]]; then
