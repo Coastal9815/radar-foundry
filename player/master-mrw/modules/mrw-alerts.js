@@ -20,7 +20,9 @@
 
   var MRW_THRESHOLDS = {
     airPm25: 12,
+    /** MRW local wind: same entry as pi-wx threat_strip / Galaxy A9 */
     windAvg10: 15,
+    windGustMin: 20,
     rainRate: 0.02,
     uvIndex: 8,
     tideHeightFt: 9.5,
@@ -262,10 +264,29 @@
         severity: 4,
       });
     }
-    var gust = windGust10 != null ? windGust10 : windAvg10;
-    if (gust != null && gust >= MRW_THRESHOLDS.windGustYellow) {
-      var wsev = gust >= MRW_THRESHOLDS.windGustRed ? 4 : 2;
-      pushCond({ type: "WIND", label: "Wind", value: Math.round(gust) + " mph gusts", severity: wsev });
+    var windWindy =
+      (windAvg10 != null && windAvg10 >= MRW_THRESHOLDS.windAvg10) ||
+      (windGust10 != null && windGust10 >= MRW_THRESHOLDS.windGustMin);
+    if (windWindy) {
+      var wsev = 1;
+      var g = windGust10;
+      var a = windAvg10;
+      if (g != null && g >= MRW_THRESHOLDS.windGustRed) wsev = 4;
+      else if (g != null && g >= MRW_THRESHOLDS.windGustYellow) wsev = 2;
+      else if (g != null && g >= MRW_THRESHOLDS.windGustMin) wsev = 2;
+      else if (a != null && a >= MRW_THRESHOLDS.windGustRed) wsev = 4;
+      else if (a != null && a >= MRW_THRESHOLDS.windGustYellow) wsev = 2;
+      else wsev = 1;
+
+      var windVal;
+      if (g != null && g >= MRW_THRESHOLDS.windGustMin) {
+        windVal = Math.round(g) + " mph gusts";
+      } else if (a != null) {
+        windVal = Math.round(a) + " mph avg (10m)";
+      } else {
+        windVal = Math.round(g || 0) + " mph";
+      }
+      pushCond({ type: "WIND", label: "Wind", value: windVal, severity: wsev });
     }
     if (rainRate != null && rainRate >= MRW_THRESHOLDS.rainRate) {
       pushCond({ type: "RAIN", label: "Rain", value: rainRate.toFixed(2) + " in/hr" });
