@@ -201,8 +201,23 @@
     var tideRoot = (tideJson && tideJson.tide) || tideJson || {};
 
     var airPm25 = num(airRoot.pm_2p5_ugm3);
+    var nowW = nowN.wind != null && typeof nowN.wind === "object" ? nowN.wind : {};
+    function gustPeak(a, b) {
+      if (a == null) return b;
+      if (b == null) return a;
+      return Math.max(a, b);
+    }
     var windAvg10 = num(windRoot.avg_10m_mph);
-    var windGust10 = num(windRoot.max_gust_10m_mph != null ? windRoot.max_gust_10m_mph : windRoot.gust_mph);
+    if (windAvg10 == null) windAvg10 = num(nowW.avg_10m_mph);
+    var windMaxGust10m = gustPeak(num(windRoot.max_gust_10m_mph), num(nowW.max_gust_10m_mph));
+    /* Max of all reported gusts so proxy/stale wind.json cannot hide a higher now.json gust */
+    var windGustNow = gustPeak(gustPeak(num(windRoot.gust_mph), num(nowW.gust_mph)), num(nowN.wind_gust_mph));
+    var windSpeedNow = num(windRoot.speed_mph);
+    if (windSpeedNow == null) {
+      windSpeedNow = num(nowW.speed_mph != null ? nowW.speed_mph : nowW.wind_speed_mph != null ? nowW.wind_speed_mph : nowN.wind_speed_mph);
+    }
+    /* Match pi-wx threat_strip: peak gust vs 10m max, not 10m max alone when it lags */
+    var windGustPeak = gustPeak(windGustNow, windMaxGust10m);
     var rainRate = num(rainRoot.rate_inhr);
     var heatIndex = num(compRoot.heat_index_f);
     var windChill = num(compRoot.wind_chill_f);
@@ -210,7 +225,6 @@
     var temp = num(nowN.temp_f);
     if (heatIndex == null) heatIndex = num(nowN.heat_index_f);
     if (windChill == null) windChill = num(nowN.wind_chill_f);
-    if (windGust10 == null) windGust10 = num(nowN.wind_gust_mph);
     var uvIndex = num(nowN.uv_index);
 
     var lightningProximity = undefined;
@@ -266,16 +280,19 @@
     }
     var windWindy =
       (windAvg10 != null && windAvg10 >= MRW_THRESHOLDS.windAvg10) ||
-      (windGust10 != null && windGust10 >= MRW_THRESHOLDS.windGustMin);
+      (windGustPeak != null && windGustPeak >= MRW_THRESHOLDS.windGustMin) ||
+      (windSpeedNow != null && windSpeedNow >= MRW_THRESHOLDS.windAvg10);
     if (windWindy) {
       var wsev = 1;
-      var g = windGust10;
+      var g = windGustPeak;
       var a = windAvg10;
       if (g != null && g >= MRW_THRESHOLDS.windGustRed) wsev = 4;
       else if (g != null && g >= MRW_THRESHOLDS.windGustYellow) wsev = 2;
       else if (g != null && g >= MRW_THRESHOLDS.windGustMin) wsev = 2;
       else if (a != null && a >= MRW_THRESHOLDS.windGustRed) wsev = 4;
       else if (a != null && a >= MRW_THRESHOLDS.windGustYellow) wsev = 2;
+      else if (windSpeedNow != null && windSpeedNow >= MRW_THRESHOLDS.windGustYellow) wsev = 2;
+      else if (windSpeedNow != null && windSpeedNow >= MRW_THRESHOLDS.windAvg10) wsev = 1;
       else wsev = 1;
 
       var windVal;
@@ -283,6 +300,8 @@
         windVal = Math.round(g) + " mph gusts";
       } else if (a != null) {
         windVal = Math.round(a) + " mph avg (10m)";
+      } else if (windSpeedNow != null) {
+        windVal = Math.round(windSpeedNow) + " mph sustained";
       } else {
         windVal = Math.round(g || 0) + " mph";
       }
