@@ -155,6 +155,12 @@
     return raw;
   }
 
+  /** Inland MRW: omit coastal rip-current products from NWS lines */
+  function isExcludedNwsEvent(eventStr, headlineStr) {
+    var h = ((headlineStr || "") + " " + (eventStr || "")).toLowerCase();
+    return h.indexOf("rip current") !== -1;
+  }
+
   function sortNwsAlerts(alerts) {
     var order = ["Tornado", "Tsunami", "Severe Thunderstorm", "Extreme Wind", "Flash Flood", "Tropical", "Blizzard"];
     return alerts.slice().sort(function (a, b) {
@@ -182,10 +188,13 @@
       for (var fi = 0; fi < nwsData.features.length; fi++) {
         var f = nwsData.features[fi];
         var p = (f && f.properties) || {};
+        var ev = typeof p.event === "string" ? p.event : "";
+        var hl = typeof p.headline === "string" ? p.headline : ev;
+        if (isExcludedNwsEvent(ev, hl)) continue;
         nwsAlerts.push({
-          event: typeof p.event === "string" ? p.event : "",
+          event: ev,
           severity: typeof p.severity === "string" ? p.severity : "Unknown",
-          headline: typeof p.headline === "string" ? p.headline : typeof p.event === "string" ? p.event : "",
+          headline: hl,
           onset: typeof p.onset === "string" ? p.onset : undefined,
           expires: typeof p.expires === "string" ? p.expires : undefined,
         });

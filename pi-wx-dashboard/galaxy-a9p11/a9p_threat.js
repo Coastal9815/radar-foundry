@@ -118,6 +118,14 @@
     return "";
   }
 
+  /** Match master/site: hide rip-current coastal products on inland dashboard */
+  function isExcludedNwsThreat(nws) {
+    if (!nws || typeof nws !== "object") return false;
+    var ev = ((nws.event || "") + "").toLowerCase();
+    var th = ((nws.threat || "") + "").toLowerCase();
+    return ev.indexOf("rip current") !== -1 || th.indexOf("rip current") !== -1;
+  }
+
   function effectiveNwsLevel(nws) {
     const fromText = threatTextLevel((nws && nws.threat) ? nws.threat : "");
     if (fromText) return fromText;
@@ -264,7 +272,11 @@
       /* sticky LTG on transient errors */
     }
 
-    const nws = (tj && tj.nws) || {};
+    var nwsRaw = (tj && tj.nws) || {};
+    var nws = nwsRaw;
+    if (isExcludedNwsThreat(nwsRaw)) {
+      nws = { threat: "", level: "NONE", color: "NONE", expires: null, count: 0 };
+    }
     const local = ((tj && tj.local) || "").toString().toUpperCase();
 
     const nwsThreat = ((nws.threat || "") + "").toUpperCase();
