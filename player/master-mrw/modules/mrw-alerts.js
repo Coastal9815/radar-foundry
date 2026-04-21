@@ -182,6 +182,24 @@
     return raw;
   }
 
+  /** Bar severity from PM2.5 — match alerts.ts / AlertBox */
+  function pm25ConditionSeverity(ug) {
+    if (ug >= 125.5) return 4;
+    if (ug >= 55.5) return 3;
+    if (ug >= 35.5) return 2;
+    return 2;
+  }
+
+  /** MRW line CSS — match website pm25Ugm3TextClass / Air Quality box */
+  function pm25Ugm3LineClass(ug) {
+    if (ug == null || isNaN(ug) || ug <= 9) return "threatLine--mrw";
+    if (ug < 35.5) return "threatLine--mrwAir1";
+    if (ug < 55.5) return "threatLine--mrwAir2";
+    if (ug < 125.5) return "threatLine--mrwAir3";
+    if (ug < 225.5) return "threatLine--mrwAir4";
+    return "threatLine--mrwAir5";
+  }
+
   function buildAlertsPayload(nwsData, airJson, windJson, rainJson, computedJson, nowJson, lightningJson, tideJson) {
     var nwsAlerts = [];
     if (nwsData && nwsData.features) {
@@ -209,7 +227,9 @@
     var nowN = getNowBlock(nowJson);
     var tideRoot = (tideJson && tideJson.tide) || tideJson || {};
 
-    var airPm25 = num(airRoot.pm_2p5_ugm3);
+    var rawPm25 = num(airRoot.pm_2p5_ugm3);
+    var nowcastPm25 = num(airRoot.pm_2p5_nowcast_ugm3);
+    var airPm25Display = nowcastPm25 != null ? nowcastPm25 : rawPm25;
     var nowW = nowN.wind != null && typeof nowN.wind === "object" ? nowN.wind : {};
     function gustPeak(a, b) {
       if (a == null) return b;
@@ -276,8 +296,14 @@
       mrwConditions.push(c);
     }
 
-    if (airPm25 != null && airPm25 >= MRW_THRESHOLDS.airPm25) {
-      pushCond({ type: "AIR", label: "Air quality", value: "PM2.5 " + airPm25 + " µg/m³" });
+    if (airPm25Display != null && airPm25Display >= MRW_THRESHOLDS.airPm25) {
+      pushCond({
+        type: "AIR",
+        label: "Air quality",
+        value: "PM2.5 " + airPm25Display.toFixed(2) + " µg/m³",
+        airPm25Ugm3: airPm25Display,
+        severity: pm25ConditionSeverity(airPm25Display),
+      });
     }
     if (lightningProximity) {
       pushCond({
@@ -412,6 +438,7 @@
     return {
       nwsLines: nwsLines,
       mrwLines: mrwLines,
+      mrwConditions: mrwConditions.slice(0, 3),
       severity: severity,
       hasLightningAlert: !!lightningProximity,
       titleAlertType: titleAlertType,
@@ -460,7 +487,9 @@
     linesEl.innerHTML = "";
 
     var hasNws = data && data.nwsLines && data.nwsLines.length > 0;
-    var hasLocal = data && data.mrwLines && data.mrwLines.length > 0;
+    var mrwCondRows = data && data.mrwConditions && data.mrwConditions.length > 0;
+    var hasLocal =
+      data && ((data.mrwLines && data.mrwLines.length > 0) || mrwCondRows);
     var noAlerts = status === "success" && data && !hasNws && !hasLocal;
 
     if (dots) {
@@ -509,13 +538,30 @@
       }
     }
     if (hasLocal) {
-      for (var j = 0; j < data.mrwLines.length; j++) {
-        var line = data.mrwLines[j];
-        var row2 = document.createElement("div");
-        var isLightning = line.indexOf("Lightning Proximity Alert") === 0;
-        row2.className = "threatLine " + (isLightning ? "threatLine--mrwLightning" : "threatLine--mrw");
-        row2.textContent = "Moon River: " + line;
-        linesEl.appendChild(row2);
+      if (mrwCondRows) {
+        for (var j = 0; j < data.mrwConditions.length; j++) {
+          var cond = data.mrwConditions[j];
+          var rowM = document.createElement("div");
+          rowM.className = "threatLine";
+          if (cond.type === "LIGHTNING") {
+            rowM.classList.add("threatLine--mrwLightning");
+          } else if (cond.type === "AIR" && cond.airPm25Ugm3 != null) {
+            rowM.classList.add(pm25Ugm3LineClass(cond.airPm25Ugm3));
+          } else {
+            rowM.classList.add("threatLine--mrw");
+          }
+          rowM.textContent = "Moon River: " + cond.label + ": " + cond.value;
+          linesEl.appendChild(rowM);
+        }
+      } else {
+        for (var jj = 0; jj < data.mrwLines.length; jj++) {
+          var line = data.mrwLines[jj];
+          var row2 = document.createElement("div");
+          var isLightning = line.indexOf("Lightning Proximity Alert") === 0;
+          row2.className = "threatLine " + (isLightning ? "threatLine--mrwLightning" : "threatLine--mrw");
+          row2.textContent = "Moon River: " + line;
+          linesEl.appendChild(row2);
+        }
       }
     } else if (hasNws) {
       var row3 = document.createElement("div");
