@@ -130,9 +130,12 @@ def fetch_hms_smoke():
     used_ymd = None
     used_url = None
     best_rank = 0
-    got_file = False
+    got_nonempty = False
+    saw_download_fail = False
+    saw_only_empty = False
+    polygon_count = None
 
-    for day_off in range(4):
+    for day_off in range(7):
         day = et.date() - timedelta(days=day_off)
         day_et = datetime(
             day.year, day.month, day.day, 12, tzinfo=ZoneInfo("America/New_York")
@@ -141,32 +144,43 @@ def fetch_hms_smoke():
         with tempfile.TemporaryDirectory() as tmp:
             zpath = Path(tmp) / "hms.zip"
             if not _hms_download_zip(url, zpath):
+                saw_download_fail = True
                 continue
             try:
                 with zipfile.ZipFile(zpath, "r") as zf:
                     zf.extractall(tmp)
             except zipfile.BadZipFile:
+                saw_download_fail = True
                 continue
             shp_files = list(Path(tmp).glob("*.shp"))
             if not shp_files:
+                saw_download_fail = True
                 continue
             shp_path = shp_files[0]
             try:
                 reader = shapefile.Reader(str(shp_path))
             except Exception:
+                saw_download_fail = True
                 continue
             field_names = [f[0] for f in reader.fields[1:]]
             if "Density" not in field_names:
+                saw_download_fail = True
+                continue
+            n_poly = len(reader.shapes())
+            if n_poly == 0:
+                # NOAA often posts a stub zip before daytime smoke analysis is complete.
+                saw_only_empty = True
                 continue
             dens_idx = field_names.index("Density")
             ymd = shp_path.stem.replace("hms_smoke", "")
-            got_file = True
+            got_nonempty = True
             used_ymd = ymd
             used_url = url
+            polygon_count = n_poly
             best_rank = 0
             best_level = "None"
             best_raw = None
-            for i in range(len(reader.shapes())):
+            for i in range(n_poly):
                 shp = reader.shape(i)
                 if not _point_in_hms_shape(MRW_LON, MRW_LAT, shp):
                     continue
@@ -180,7 +194,15 @@ def fetch_hms_smoke():
                     best_raw = raw_d
             break
 
-    if not got_file:
+    if not got_nonempty:
+        err = "HMS shapefile unavailable"
+        if saw_only_empty and not saw_download_fail:
+            err = (
+                "HMS daily file has no smoke polygons yet (first analysis is typically late morning ET); "
+                "retry later or use PM2.5 for local conditions"
+            )
+        elif saw_only_empty:
+            err = "HMS shapefile missing or empty for recent days"
         result = {
             "level": None,
             "color": None,
@@ -188,7 +210,7 @@ def fetch_hms_smoke():
             "unit": None,
             "source": "NOAA HMS",
             "variable": "Analyst smoke polygon (GOES)",
-            "error": "HMS shapefile unavailable",
+            "error": err,
         }
         _set_cache("smoke", result, 5 * 60)
         return result
@@ -204,6 +226,7 @@ def fetch_hms_smoke():
         "density_raw": best_raw,
         "file_date": used_ymd,
         "file_url": used_url,
+        "polygon_count": polygon_count,
     }
     _set_cache("smoke", result, 20 * 60)
     return result
