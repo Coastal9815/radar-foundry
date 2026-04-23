@@ -267,7 +267,11 @@ def _hrrr_smoke_sample(grib_path, s3_path):
 
 def fetch_smoke():
     """Fetch near-surface smoke from NOAA HRRR GRIB2. Cache 60 min.
-    MASSDEN 8m AGL; kg/m³ -> µg/m³ = *1e9. Classification + color."""
+    MASSDEN 8m AGL; kg/m³ -> µg/m³ = *1e9. Classification + color.
+
+    This is the HRRR aerosol *model* tracer at one grid point (MRW), not VIIRS/HMS
+    or station PM2.5. It can read low (<5 µg/m³ → site shows \"None\") during
+    regional fires if the plume is aloft, outside the cell, or not yet in the analysis."""
     cached = _get_cached("smoke", 60 * 60)
     if cached is not None:
         return cached
