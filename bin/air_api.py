@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Air quality API: ozone (AirNow), smoke (HRRR), saharan dust, pollen (Google).
+"""Air quality API: ozone (AirNow), smoke (NOAA HMS), saharan dust, pollen (Google).
 Server-side only; keys never exposed. Single endpoint /api/air/summary."""
 import json
 import os
+import tempfile
+import urllib.error
 import urllib.request
+import zipfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 MRW_LAT = 31.91918481533656
 MRW_LON = -81.07604504861318
@@ -16,11 +20,193 @@ SMOKE_LEVELS = [(5, "None"), (15, "Light"), (35, "Moderate"), (float("inf"), "He
 SMOKE_COLORS = {"None": None, "Light": "#eab308", "Moderate": "#f97316", "Heavy": "#ef4444"}
 HRRR_BUCKET = "s3://noaa-hrrr-bdp-pds"
 
+# NOAA Hazard Mapping System — analyst-drawn smoke plumes (GOES), daily shapefile zip
+HMS_SHAPEFILE_BASE = (
+    "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile"
+)
+_HMS_DENSITY_ORDER = {"Heavy": 3, "Moderate": 2, "Light": 1, "None": 0}
+
 # Google Pollen API: shorter cache so public site / gen_air stay fresher (was 12 h).
 POLLEN_CACHE_SEC = 3 * 3600
 
 # In-memory cache: {key: (expires_at, data)}
 _cache = {}
+
+
+def _hms_normalize_density(raw):
+    """Map HMS DBF Density to UI tier (Medium → Moderate)."""
+    if raw is None:
+        return None
+    s = str(raw).strip().lower()
+    if s == "heavy":
+        return "Heavy"
+    if s in ("medium", "moderate"):
+        return "Moderate"
+    if s == "light":
+        return "Light"
+    if s == "unspecified":
+        return "Light"
+    return "Light"
+
+
+def _point_in_ring(lon, lat, ring):
+    """Ray cast; ring is list of (x, y) = (lon, lat)."""
+    n = len(ring)
+    if n < 3:
+        return False
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = ring[i]
+        xj, yj = ring[j]
+        denom = (yj - yi) or 1e-30
+        if (yi > lat) != (yj > lat) and (lon < (xj - xi) * (lat - yi) / denom + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _point_in_hms_shape(lon, lat, shp):
+    """Point vs pyshp polygon (possibly multipart). Each part = one closed ring."""
+    st = shp.shapeType
+    if st not in (5, 15, 23, 25):
+        return False
+    parts = list(shp.parts) + [len(shp.points)]
+    pts = shp.points
+    for pi in range(len(parts) - 1):
+        a, b = int(parts[pi]), int(parts[pi + 1])
+        ring = pts[a:b]
+        if _point_in_ring(lon, lat, ring):
+            return True
+    return False
+
+
+def _hms_zip_url(day_et: datetime) -> str:
+    y, m, d = day_et.year, day_et.month, day_et.day
+    ymd = f"{y}{m:02d}{d:02d}"
+    return f"{HMS_SHAPEFILE_BASE}/{y}/{m:02d}/hms_smoke{ymd}.zip"
+
+
+def _hms_download_zip(url: str, dest: Path, timeout=90) -> bool:
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "radar-foundry-air-api/hms (MoonRiverWeather)"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            dest.write_bytes(resp.read())
+        return True
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+        return False
+
+
+def fetch_hms_smoke():
+    """NOAA HMS analyst smoke polygons (GOES). Cache 20 min.
+
+    Classifies MRW as inside a plume or not; if inside, uses strongest overlapping
+    density (Light / Moderate / Heavy). Not µg/m³ — use station PM2.5 for that.
+    """
+    cached = _get_cached("smoke", 20 * 60)
+    if cached is not None:
+        return cached
+
+    try:
+        import shapefile  # pyshp
+    except ImportError:
+        result = {
+            "level": None,
+            "color": None,
+            "value": None,
+            "unit": None,
+            "source": "NOAA HMS",
+            "error": "pyshp not installed (pip install pyshp)",
+        }
+        _set_cache("smoke", result, 5 * 60)
+        return result
+
+    et = datetime.now(ZoneInfo("America/New_York"))
+    best_level = "None"
+    best_raw = None
+    used_ymd = None
+    used_url = None
+    best_rank = 0
+    got_file = False
+
+    for day_off in range(4):
+        day = et.date() - timedelta(days=day_off)
+        day_et = datetime(
+            day.year, day.month, day.day, 12, tzinfo=ZoneInfo("America/New_York")
+        )
+        url = _hms_zip_url(day_et)
+        with tempfile.TemporaryDirectory() as tmp:
+            zpath = Path(tmp) / "hms.zip"
+            if not _hms_download_zip(url, zpath):
+                continue
+            try:
+                with zipfile.ZipFile(zpath, "r") as zf:
+                    zf.extractall(tmp)
+            except zipfile.BadZipFile:
+                continue
+            shp_files = list(Path(tmp).glob("*.shp"))
+            if not shp_files:
+                continue
+            shp_path = shp_files[0]
+            try:
+                reader = shapefile.Reader(str(shp_path))
+            except Exception:
+                continue
+            field_names = [f[0] for f in reader.fields[1:]]
+            if "Density" not in field_names:
+                continue
+            dens_idx = field_names.index("Density")
+            ymd = shp_path.stem.replace("hms_smoke", "")
+            got_file = True
+            used_ymd = ymd
+            used_url = url
+            best_rank = 0
+            best_level = "None"
+            best_raw = None
+            for i in range(len(reader.shapes())):
+                shp = reader.shape(i)
+                if not _point_in_hms_shape(MRW_LON, MRW_LAT, shp):
+                    continue
+                rec = reader.record(i)
+                raw_d = rec[dens_idx]
+                norm = _hms_normalize_density(raw_d)
+                rk = _HMS_DENSITY_ORDER.get(norm, 0)
+                if rk > best_rank:
+                    best_rank = rk
+                    best_level = norm
+                    best_raw = raw_d
+            break
+
+    if not got_file:
+        result = {
+            "level": None,
+            "color": None,
+            "value": None,
+            "unit": None,
+            "source": "NOAA HMS",
+            "variable": "Analyst smoke polygon (GOES)",
+            "error": "HMS shapefile unavailable",
+        }
+        _set_cache("smoke", result, 5 * 60)
+        return result
+
+    result = {
+        "level": best_level,
+        "color": SMOKE_COLORS.get(best_level),
+        "value": None,
+        "unit": None,
+        "source": "NOAA HMS",
+        "variable": "Analyst smoke polygon (GOES)",
+        "in_plume": best_rank > 0,
+        "density_raw": best_raw,
+        "file_date": used_ymd,
+        "file_url": used_url,
+    }
+    _set_cache("smoke", result, 20 * 60)
+    return result
 
 
 def _format_valid_time_for_json(v):
@@ -265,14 +451,9 @@ def _hrrr_smoke_sample(grib_path, s3_path):
     }
 
 
-def fetch_smoke():
-    """Fetch near-surface smoke from NOAA HRRR GRIB2. Cache 60 min.
-    MASSDEN 8m AGL; kg/m³ -> µg/m³ = *1e9. Classification + color.
-
-    This is the HRRR aerosol *model* tracer at one grid point (MRW), not VIIRS/HMS
-    or station PM2.5. It can read low (<5 µg/m³ → site shows \"None\") during
-    regional fires if the plume is aloft, outside the cell, or not yet in the analysis."""
-    cached = _get_cached("smoke", 60 * 60)
+def fetch_smoke_hrrr():
+    """Optional: HRRR MASSDEN 8 m smoke tracer (not used for public smoke line)."""
+    cached = _get_cached("smoke_hrrr", 60 * 60)
     if cached is not None:
         return cached
 
@@ -291,7 +472,7 @@ def fetch_smoke():
             "source": "NOAA HRRR Smoke",
             "error": "Data unavailable",
         }
-        _set_cache("smoke", result, 5 * 60)  # 5 min for failures so transient issues recover
+        _set_cache("smoke_hrrr", result, 5 * 60)  # 5 min for failures so transient issues recover
         return result
 
     s3_path = _hrrr_smoke_find_file()
@@ -304,10 +485,8 @@ def fetch_smoke():
             "source": "NOAA HRRR Smoke",
             "error": "Data unavailable",
         }
-        _set_cache("smoke", result, 5 * 60)  # 5 min for failures
+        _set_cache("smoke_hrrr", result, 5 * 60)  # 5 min for failures
         return result
-
-    import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
         fname = s3_path.split("/")[-1]
@@ -329,7 +508,7 @@ def fetch_smoke():
                 "source": "NOAA HRRR Smoke",
                 "error": "Data unavailable",
             }
-            _set_cache("smoke", result, 5 * 60)  # 5 min for failures so transient issues recover
+            _set_cache("smoke_hrrr", result, 5 * 60)  # 5 min for failures so transient issues recover
             return result
 
         val_ug = data["value_ug_m3"]
@@ -354,7 +533,7 @@ def fetch_smoke():
         }
         result["concentration"] = result["value"]
 
-    _set_cache("smoke", result, 60 * 60)
+    _set_cache("smoke_hrrr", result, 60 * 60)
     return result
 
 
@@ -563,7 +742,7 @@ def fetch_summary():
     """Combined air summary: PM, ozone, smoke, saharan_dust, pollen."""
     pm = _fetch_pi_wx_air()
     ozone = fetch_ozone()
-    smoke = fetch_smoke()
+    smoke = fetch_hms_smoke()
     saharan_dust = fetch_saharan_dust()
     pollen = fetch_pollen()
 
