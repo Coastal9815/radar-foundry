@@ -7,6 +7,3 @@ skyfield>=1.46
 
 # Satellite (bin/render_goes_frame.py, bin/update_goes_loop.py)
 s3fs>=2024.1.0
-
-# Air API HMS smoke polygons (bin/air_api.py)
-pyshp>=2.3.0
