@@ -735,6 +735,49 @@ def fetch_saharan_dust():
     return result
 
 
+def _pollen_category_score(category_raw):
+    """Map Google Pollen category text to 0–5 (matches UPI). Case-insensitive."""
+    c = (category_raw or "").strip().lower().replace("–", "-")
+    if not c or c == "none":
+        return 0.0
+    if "very high" in c:
+        return 5.0
+    if c == "high" or c.startswith("high "):
+        return 4.0
+    if "moderate" in c and "low" in c:
+        return 2.5
+    if "moderate" in c:
+        return 3.0
+    if "very low" in c:
+        return 1.0
+    if c == "low" or c.startswith("low "):
+        return 2.0
+    return 0.0
+
+
+def _pollen_canonical_level(category_raw):
+    """Display labels aligned with AirQualityBox pollenColor() expectations."""
+    s = (category_raw or "").strip()
+    if not s:
+        return "None"
+    low = s.lower()
+    if "very high" in low:
+        return "Very High"
+    if low == "high" or low.startswith("high "):
+        return "High"
+    if "moderate" in low and "low" in low:
+        return "Low-Moderate"
+    if "moderate" in low:
+        return "Moderate"
+    if "very low" in low:
+        return "Very Low"
+    if low == "low" or low.startswith("low "):
+        return "Low"
+    if low == "none":
+        return "None"
+    return s[:1].upper() + s[1:] if s else "None"
+
+
 def fetch_pollen():
     """Fetch pollen from Google Pollen API. Combined level + primary type. Cache POLLEN_CACHE_SEC.
     NAB (National Allergy Bureau) has no public API; Google Pollen used as proxy."""
@@ -768,39 +811,44 @@ def fetch_pollen():
             "error": str(e),
         }
 
-    # Map category to level; find primary (highest) pollen type
-    CAT_TO_LEVEL = {
-        "None": "None",
-        "Very Low": "Very Low",
-        "Low": "Low",
-        "Low-Moderate": "Low-Moderate",
-        "Moderate": "Moderate",
-        "High": "High",
-        "Very High": "Very High",
-    }
     TYPE_NAMES = {"TREE": "Tree", "GRASS": "Grass", "WEED": "Weed"}
 
+    best_score = -1.0
     level = "None"
     primary = None
-    best_val = -1
 
     for daily in (data.get("dailyInfo") or [])[:1]:
         for p in daily.get("pollenTypeInfo", []) or []:
-            idx = p.get("indexInfo", {})
+            idx = p.get("indexInfo") or {}
+            if not idx:
+                continue
             val = idx.get("value")
-            cat = idx.get("category") or "None"
-            if val is not None and val > best_val:
-                best_val = val
+            cat_raw = idx.get("category") or "None"
+            cat_score = _pollen_category_score(cat_raw)
+            if val is not None:
+                try:
+                    score = max(float(val), cat_score)
+                except (TypeError, ValueError):
+                    score = cat_score
+            else:
+                score = cat_score
+            if score > best_score:
+                best_score = score
                 primary = TYPE_NAMES.get(p.get("code", ""), p.get("code", "Unknown"))
-                level = CAT_TO_LEVEL.get(cat, cat)
-            elif val is not None and best_val < 0:
-                level = CAT_TO_LEVEL.get(cat, cat)
+                level = _pollen_canonical_level(cat_raw)
 
-    result = {
-        "level": level if best_val >= 0 else None,
-        "primary": primary,
-        "source": "National Allergy Bureau",
-    }
+    if best_score < 0:
+        result = {
+            "level": "None",
+            "primary": None,
+            "source": "National Allergy Bureau",
+        }
+    else:
+        result = {
+            "level": level,
+            "primary": primary,
+            "source": "National Allergy Bureau",
+        }
     _set_cache("pollen", result, POLLEN_CACHE_SEC)
     return result
 
