@@ -122,7 +122,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_error(502, f"drought proxy error: {e}")
 
     def _serve_air_api(self, path):
-        """Serve /api/air/summary: PM, ozone, smoke, saharan dust, pollen (server-side)."""
+        """Serve /api/air/summary: PM, ozone, smoke (NOAA HMS), saharan dust, pollen (server-side)."""
         import json
         proj = _project_root()
         if str(proj) not in sys.path:

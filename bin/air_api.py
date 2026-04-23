@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Air quality API: ozone (AirNow), smoke (station PM2.5 impact), saharan dust, pollen (Google).
+"""Air quality API: ozone (AirNow), smoke (NOAA HMS + optional HRRR Severe), saharan dust, pollen (Google).
 Server-side only; keys never exposed. Single endpoint /api/air/summary."""
 import json
 import os
 import tempfile
 import urllib.request
+import zipfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -12,12 +13,19 @@ MRW_LAT = 31.91918481533656
 MRW_LON = -81.07604504861318
 PI_WX_BASE = "http://192.168.2.174"
 
-# Smoke concentration (µg/m³) -> level: 0 to <5=None, 5 to <15=Light, 15 to <35=Moderate, 35+=Heavy
+HMS_SMOKE_SHAPEFILE_BASE = (
+    "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile"
+)
+
+# HRRR MASSDEN (µg/m³) tiers for optional debug endpoint fetch_smoke_hrrr
 SMOKE_LEVELS = [(5, "None"), (15, "Light"), (35, "Moderate"), (float("inf"), "Heavy")]
 SMOKE_COLORS = {"None": None, "Light": "#eab308", "Moderate": "#f97316", "Heavy": "#ef4444"}
 HRRR_BUCKET = "s3://noaa-hrrr-bdp-pds"
 
-# Wildfire smoke impact at MRW from station PM2.5 (EPA PM2.5 µg/m³ breakpoints)
+# When NOAA HMS density is Heavy, upgrade to Severe if HRRR 8 m smoke tracer exceeds this (µg/m³).
+HRRR_SEVERE_WITH_HMS_HEAVY_UGM3 = 80.0
+
+# Dashboard / site: None, Light, Moderate, Heavy, Severe (HMS gives Light/Medium/Heavy; Medium→Moderate)
 SMOKE_IMPACT_COLORS = {
     "None": None,
     "Light": "#eab308",
@@ -26,6 +34,8 @@ SMOKE_IMPACT_COLORS = {
     "Severe": "#7f1d1d",
 }
 
+_DENSITY_ORDER = {"NONE": 0, "LIGHT": 1, "MODERATE": 2, "MEDIUM": 2, "HEAVY": 3, "THICK": 3}
+
 # Google Pollen API: shorter cache so public site / gen_air stay fresher (was 12 h).
 POLLEN_CACHE_SEC = 3 * 3600
 
@@ -33,52 +43,237 @@ POLLEN_CACHE_SEC = 3 * 3600
 _cache = {}
 
 
-def build_smoke_from_pm25(pm25):
-    """Real-time smoke impact at MRW from station PM2.5 (µg/m³), EPA breakpoint bands.
+def _point_in_ring(lon, lat, ring):
+    """Ray cast; ring is list of (lon, lat)."""
+    inside = False
+    n = len(ring)
+    if n < 3:
+        return False
+    j = n - 1
+    for i in range(n):
+        xi, yi = ring[i]
+        xj, yj = ring[j]
+        if ((yi > lat) != (yj > lat)) and (
+            lon < (xj - xi) * (lat - yi) / (yj - yi + 1e-30) + xi
+        ):
+            inside = not inside
+        j = i
+    return inside
 
-    Uses the same nowcast-first PM2.5 as the public site (from pi-wx air.json).
-    Levels: None, Light, Moderate, Heavy, Severe.
-    """
-    if pm25 is None:
-        return {
-            "level": None,
-            "color": None,
-            "value": None,
-            "unit": "µg/m³",
-            "source": "Station PM2.5 (Moon River Weather)",
-            "method": "PM2.5 bands (EPA-aligned)",
-            "error": "PM2.5 unavailable",
-        }
+
+def _shape_hits_point(shp, lon, lat):
+    pts = shp.points
+    parts = list(shp.parts) + [len(pts)]
+    for pi in range(len(parts) - 1):
+        ring = pts[parts[pi] : parts[pi + 1]]
+        if len(ring) >= 3 and _point_in_ring(lon, lat, ring):
+            return True
+    return False
+
+
+def _normalize_hms_density(raw):
+    if raw is None:
+        return None
+    d = str(raw).strip().upper()
+    if d in ("LIGHT",):
+        return "Light"
+    if d in ("MEDIUM", "MODERATE"):
+        return "Moderate"
+    if d in ("HEAVY", "THICK"):
+        return "Heavy"
+    return None
+
+
+def _hms_density_rank(label):
+    if not label:
+        return 0
+    return _DENSITY_ORDER.get(str(label).strip().upper(), 0)
+
+
+def _level_from_hms_rank(rank):
+    if rank <= 0:
+        return "None"
+    if rank == 1:
+        return "Light"
+    if rank == 2:
+        return "Moderate"
+    return "Heavy"
+
+
+def _hms_shapefile_url(utc_date):
+    y = utc_date.year
+    m = utc_date.month
+    d = utc_date.day
+    ymd = f"{y:04d}{m:02d}{d:02d}"
+    return f"{HMS_SMOKE_SHAPEFILE_BASE}/{y:04d}/{m:02d}/hms_smoke{ymd}.zip"
+
+
+def fetch_smoke_hms():
+    """NOAA HMS smoke polygons: analyst smoke density at MRW. Cache 20 min."""
+    cached = _get_cached("smoke_hms", 20 * 60)
+    if cached is not None:
+        return cached
+
     try:
-        u = float(pm25)
-    except (TypeError, ValueError):
-        return {
+        import shapefile
+    except ImportError:
+        out = {
             "level": None,
             "color": None,
-            "value": None,
-            "unit": "µg/m³",
-            "source": "Station PM2.5 (Moon River Weather)",
-            "method": "PM2.5 bands (EPA-aligned)",
-            "error": "Invalid PM2.5",
+            "source": "NOAA HMS",
+            "method": "Hazard Mapping System smoke polygons",
+            "error": "pyshp not installed",
         }
-    if u < 12.0:
-        lvl = "None"
-    elif u < 35.5:
-        lvl = "Light"
-    elif u < 55.5:
-        lvl = "Moderate"
-    elif u < 150.5:
-        lvl = "Heavy"
-    else:
-        lvl = "Severe"
-    return {
+        _set_cache("smoke_hms", out, 5 * 60)
+        return out
+
+    now = datetime.now(timezone.utc)
+    zip_bytes = None
+    used_ymd = None
+    for day_back in range(7):
+        day = now.date() - timedelta(days=day_back)
+        url = _hms_shapefile_url(datetime(day.year, day.month, day.day, tzinfo=timezone.utc))
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "radar-foundry-air-api/1"})
+            with urllib.request.urlopen(req, timeout=45) as r:
+                data = r.read()
+        except Exception:
+            continue
+        if len(data) < 3000:
+            continue
+        zip_bytes = data
+        used_ymd = f"{day.year:04d}-{day.month:02d}-{day.day:02d}"
+        break
+
+    if not zip_bytes:
+        out = {
+            "level": None,
+            "color": None,
+            "source": "NOAA HMS",
+            "method": "Hazard Mapping System smoke polygons",
+            "error": "No recent HMS smoke shapefile",
+        }
+        _set_cache("smoke_hms", out, 10 * 60)
+        return out
+
+    best_rank = 0
+    best_raw = None
+    best_meta = None
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            zpath = Path(tmp) / "hms.zip"
+            zpath.write_bytes(zip_bytes)
+            with zipfile.ZipFile(zpath, "r") as zf:
+                zf.extractall(tmp)
+            shp_files = list(Path(tmp).glob("*.shp"))
+            if not shp_files:
+                raise ValueError("no shp in zip")
+            r = shapefile.Reader(str(shp_files[0]))
+            shapes = r.shapes()
+            records = r.records()
+            for i, shp in enumerate(shapes):
+                if not _shape_hits_point(shp, MRW_LON, MRW_LAT):
+                    continue
+                rec = records[i]
+                dens_raw = rec[3] if len(rec) > 3 else None
+                norm = _normalize_hms_density(dens_raw)
+                rk = _hms_density_rank(norm or dens_raw)
+                if rk > best_rank:
+                    best_rank = rk
+                    best_raw = dens_raw
+                    sat = rec[0] if len(rec) > 0 else None
+                    t0 = rec[1] if len(rec) > 1 else None
+                    t1 = rec[2] if len(rec) > 2 else None
+                    best_meta = {"satellite": sat, "start": t0, "end": t1}
+    except Exception as e:
+        out = {
+            "level": None,
+            "color": None,
+            "source": "NOAA HMS",
+            "method": "Hazard Mapping System smoke polygons",
+            "error": str(e),
+        }
+        _set_cache("smoke_hms", out, 10 * 60)
+        return out
+
+    lvl = _level_from_hms_rank(best_rank)
+    out = {
         "level": lvl,
         "color": SMOKE_IMPACT_COLORS.get(lvl),
-        "value": round(u, 2),
-        "unit": "µg/m³",
-        "source": "Station PM2.5 (Moon River Weather)",
-        "method": "Wildfire smoke impact from PM2.5 at station (EPA breakpoints)",
+        "source": "NOAA HMS",
+        "method": "Analyst smoke polygon at station coordinates (GOES/VIIRS HMS)",
+        "hms_shapefile_date": used_ymd,
+        "hms_density": best_raw,
+        "hms_window": best_meta,
     }
+    _set_cache("smoke_hms", out, 20 * 60)
+    return out
+
+
+def _hrrr_tracer_ugm3_at_mrw():
+    """Sample HRRR MASSDEN 8 m at MRW; cache 45 min. Returns float or None."""
+    cached = _get_cached("hrrr_tracer_ugm3", 45 * 60)
+    if cached is not None:
+        return cached
+
+    import subprocess
+    from pathlib import Path as P
+
+    try:
+        import numpy as np
+        import xarray as xr
+    except ImportError:
+        _set_cache("hrrr_tracer_ugm3", None, 15 * 60)
+        return None
+
+    s3_path = _hrrr_smoke_find_file()
+    if not s3_path:
+        _set_cache("hrrr_tracer_ugm3", None, 15 * 60)
+        return None
+
+    with tempfile.TemporaryDirectory() as tmp:
+        local = P(tmp) / s3_path.split("/")[-1]
+        try:
+            subprocess.run(
+                ["aws", "s3", "cp", s3_path, str(local), "--no-sign-request"],
+                check=True,
+                capture_output=True,
+                timeout=300,
+            )
+            data = _hrrr_smoke_sample(local, s3_path)
+        except Exception:
+            _set_cache("hrrr_tracer_ugm3", None, 15 * 60)
+            return None
+        val = float(data["value_ug_m3"])
+        _set_cache("hrrr_tracer_ugm3", val, 45 * 60)
+        return val
+
+
+def fetch_smoke_summary():
+    """Public smoke line: HMS categories + Severe when HMS Heavy and HRRR tracer is very high."""
+    hms = fetch_smoke_hms()
+    if hms.get("error"):
+        return hms
+
+    lvl = hms.get("level") or "None"
+    hrrr_ug = None
+    if lvl == "Heavy":
+        hrrr_ug = _hrrr_tracer_ugm3_at_mrw()
+        if hrrr_ug is not None and hrrr_ug >= HRRR_SEVERE_WITH_HMS_HEAVY_UGM3:
+            lvl = "Severe"
+
+    out = dict(hms)
+    out["level"] = lvl
+    out["color"] = SMOKE_IMPACT_COLORS.get(lvl)
+    if hrrr_ug is not None:
+        out["hrrr_smoke_tracer_ugm3"] = round(hrrr_ug, 4)
+    if lvl == "Severe":
+        out["method"] = (
+            (hms.get("method") or "")
+            + f"; Severe when HMS Heavy and HRRR MASSDEN 8m ≥ {HRRR_SEVERE_WITH_HMS_HEAVY_UGM3:g} µg/m³"
+        ).strip()
+    return out
 
 
 def _format_valid_time_for_json(v):
@@ -630,7 +825,7 @@ def fetch_summary():
         except (TypeError, ValueError):
             pm10 = None
 
-    smoke = build_smoke_from_pm25(pm25)
+    smoke = fetch_smoke_summary()
 
     return {
         "location": {"lat": MRW_LAT, "lon": MRW_LON},
