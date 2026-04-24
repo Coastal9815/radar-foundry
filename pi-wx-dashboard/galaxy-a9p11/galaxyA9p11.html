@@ -721,7 +721,7 @@ top:52px;
 
 /* A9P_LEFT3_AIR_PRESSURE_CSS_V1 — Left bottom: AirLink + Pressure */
 .airPTile{ position:relative; overflow:hidden; }
-.airPAbs{ position:absolute; inset:0; padding:14px 16px 80px 16px; box-sizing:border-box; }
+.airPAbs{ position:absolute; inset:0; padding:14px 16px; box-sizing:border-box; }
 
 .airPTitle{
   font-size:18px;
@@ -771,21 +771,6 @@ top:52px;
 #pm10.aqi-unhealthy { color: #ef4444 !important; }
 #pm10.aqi-very-unhealthy { color: #a855f7 !important; }
 #pm10.aqi-hazardous { color: #7f1d1d !important; }
-
-/* HMS smoke row (matches moonriverweather AirQualityBox tiers) */
-.airPMid{
-  margin-top:6px;
-  text-align:center;
-}
-#smoke_mrw{
-  font-size:40px;
-  letter-spacing:-0.02em;
-}
-#smoke_mrw.smoke-light { color: #eab308 !important; }
-#smoke_mrw.smoke-moderate { color: #f97316 !important; }
-#smoke_mrw.smoke-heavy { color: #ef4444 !important; }
-#smoke_mrw.smoke-severe { color: #7f1d1d !important; }
-#smoke_mrw.smoke-pending { color: #d97706 !important; }
 
 /* Pressure row */
 .airPBottom{
@@ -1205,11 +1190,6 @@ box-sizing:border-box; }
         <div class="aLbl">PM10</div>
         <div class="aVal" id="pm10">--</div>
       </div>
-    </div>
-
-    <div class="airPMid">
-      <div class="aLbl">Smoke (HMS)</div>
-      <div class="aVal" id="smoke_mrw">--</div>
     </div>
 
     <div class="airPBottom">
@@ -1870,19 +1850,6 @@ function mrwAlert15(s){
     el.className = ["aVal", cls].filter(Boolean).join(" ");
   }
 
-  function smokeTierClass(level){
-    const x = String(level || "").toLowerCase();
-    if (x === "light") return "smoke-light";
-    if (x === "moderate") return "smoke-moderate";
-    if (x === "heavy") return "smoke-heavy";
-    if (x === "severe") return "smoke-severe";
-    return "";
-  }
-  function applySmokeClasses(el, tierCls){
-    if (!el) return;
-    el.className = ["aVal", tierCls].filter(Boolean).join(" ");
-  }
-
   async function fetchAirSummary(){
     for (let i = 0; i < AIR_URLS.length; i++) {
       const base = AIR_URLS[i];
@@ -1891,7 +1858,7 @@ function mrwAlert15(s){
         const r = await fetchWithTimeout(url, { cache: "no-store", mode: "cors", credentials: "omit" }, SUMMARY_FETCH_MS);
         if (!r.ok) continue;
         const data = await r.json();
-        if (data && (data.pm25 != null || data.pm10 != null || data.smoke)) return data;
+        if (data && (data.pm25 != null || data.pm10 != null)) return data;
       }catch(_){ /* try next */ }
     }
     return null;
@@ -1903,9 +1870,9 @@ function mrwAlert15(s){
       const air = a?.air || {};
       const pm25 = num(air.pm_2p5_nowcast_ugm3 ?? air.pm_2p5_ugm3);
       const pm10 = num(air.pm_10_nowcast_ugm3 ?? air.pm_10_ugm3);
-      return { pm25: pm25, pm10: pm10, smoke: air.smoke || null };
+      return { pm25: pm25, pm10: pm10 };
     }catch(_){
-      return { pm25: null, pm10: null, smoke: null };
+      return { pm25: null, pm10: null };
     }
   }
 
@@ -1935,7 +1902,7 @@ function mrwAlert15(s){
         loadPressure(),
       ]);
       const summary = results[0].status === "fulfilled" ? results[0].value : null;
-      const local = results[1].status === "fulfilled" ? results[1].value : { pm25: null, pm10: null, smoke: null };
+      const local = results[1].status === "fulfilled" ? results[1].value : { pm25: null, pm10: null };
       const press = results[2].status === "fulfilled" ? results[2].value : { p_inhg: null, arrow: null };
 
       let pm25 = num(summary?.pm25);
@@ -1947,24 +1914,6 @@ function mrwAlert15(s){
       if (pm10 != null) setText("pm10", pm10.toFixed(1));
       applyPmClasses($("pm25"), pm25Class(pm25));
       applyPmClasses($("pm10"), pm10Class(pm10));
-
-      let smoke = local.smoke || null;
-      if ((!smoke || smoke.level == null || smoke.level === "") && summary && summary.smoke) {
-        smoke = summary.smoke;
-      }
-      const smEl = $("smoke_mrw");
-      if (smEl) {
-        if (smoke && smoke.error) {
-          smEl.textContent = "Pending";
-          applySmokeClasses(smEl, "smoke-pending");
-        } else if (smoke && smoke.level != null && smoke.level !== "") {
-          smEl.textContent = String(smoke.level);
-          applySmokeClasses(smEl, smokeTierClass(smoke.level));
-        } else {
-          smEl.textContent = "—";
-          applySmokeClasses(smEl, "");
-        }
-      }
 
       if (press.p_inhg != null && Number.isFinite(press.p_inhg)) {
         setText("p_val", (Math.round(press.p_inhg * 100) / 100).toFixed(2));
