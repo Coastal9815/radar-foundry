@@ -29,8 +29,10 @@ cp conf/air_api_keys.json.example conf/air_api_keys.json
 - Add `airnow_api_key`
 
 ### Google Pollen API (Pollen proxy for NAB)
-- Enable Pollen API in Google Cloud Console
-- Add `google_pollen_api_key`
+- Enable **Pollen API** in Google Cloud Console (same project as the key)
+- Create an API key; for server-side use on **wx-i9**, avoid **HTTP referrer** / **Android/iOS** restrictions (those cause **HTTP 403** from `curl` / Python). Use **IP** restriction to wx-i9’s egress if needed, or no restriction for a server-only key
+- Link a billing account if the console requires it
+- Add `google_pollen_api_key` to `air_api_keys.json` on **wx-i9** under `~/wx/radar-foundry/conf/`
 
 ## 3. Environment Variables
 
