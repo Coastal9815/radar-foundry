@@ -735,6 +735,12 @@ def fetch_saharan_dust():
     return result
 
 
+def _upi_value_to_canonical_level(v: int) -> str:
+    """Map Google UPI 0–5 to labels expected by the website (air-quality-style, scales)."""
+    m = {0: "None", 1: "Very Low", 2: "Low", 3: "Moderate", 4: "High", 5: "Very High"}
+    return m.get(int(v), "None")
+
+
 def _pollen_category_score(category_raw):
     """Map Google Pollen category text to 0–5 (matches UPI). Case-insensitive."""
     c = (category_raw or "").strip().lower().replace("–", "-")
@@ -791,7 +797,7 @@ def fetch_pollen():
         return {
             "level": None,
             "primary": None,
-            "source": "National Allergy Bureau",
+            "source": "Google Pollen API (UPI)",
             "error": "API key not configured (using Google Pollen proxy)",
         }
 
@@ -807,7 +813,7 @@ def fetch_pollen():
         return {
             "level": None,
             "primary": None,
-            "source": "National Allergy Bureau",
+            "source": "Google Pollen API (UPI)",
             "error": str(e),
         }
 
@@ -824,30 +830,42 @@ def fetch_pollen():
                 continue
             val = idx.get("value")
             cat_raw = idx.get("category") or "None"
-            cat_score = _pollen_category_score(cat_raw)
             if val is not None:
                 try:
-                    score = max(float(val), cat_score)
+                    vi = int(val)
+                    if vi < 0:
+                        vi = 0
+                    if vi > 5:
+                        vi = 5
+                    score = float(vi)
                 except (TypeError, ValueError):
-                    score = cat_score
+                    score = _pollen_category_score(cat_raw)
             else:
-                score = cat_score
+                score = _pollen_category_score(cat_raw)
             if score > best_score:
                 best_score = score
                 primary = TYPE_NAMES.get(p.get("code", ""), p.get("code", "Unknown"))
-                level = _pollen_canonical_level(cat_raw)
+                if val is not None:
+                    try:
+                        vi = int(val)
+                        vi = max(0, min(5, vi))
+                        level = _upi_value_to_canonical_level(vi)
+                    except (TypeError, ValueError):
+                        level = _pollen_canonical_level(cat_raw)
+                else:
+                    level = _pollen_canonical_level(cat_raw)
 
     if best_score < 0:
         result = {
             "level": "None",
             "primary": None,
-            "source": "National Allergy Bureau",
+            "source": "Google Pollen API (UPI)",
         }
     else:
         result = {
             "level": level,
             "primary": primary,
-            "source": "National Allergy Bureau",
+            "source": "Google Pollen API (UPI)",
         }
     _set_cache("pollen", result, POLLEN_CACHE_SEC)
     return result
