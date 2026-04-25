@@ -39,6 +39,9 @@ _DENSITY_ORDER = {"NONE": 0, "LIGHT": 1, "MODERATE": 2, "MEDIUM": 2, "HEAVY": 3,
 # Google Pollen API: shorter cache so public site / gen_air stay fresher (was 12 h).
 POLLEN_CACHE_SEC = 3 * 3600
 
+# Google Air Quality API: regional forecast cache (1 h).
+AQ_FORECAST_CACHE_SEC = 3600
+
 # In-memory cache: {key: (expires_at, data)}
 _cache = {}
 
@@ -871,8 +874,88 @@ def fetch_pollen():
     return result
 
 
+def fetch_regional_forecast():
+    """Google Air Quality API: today + tomorrow EPA AQI forecast (max hourly). Cache 1 h."""
+    cached = _get_cached("aq_forecast", AQ_FORECAST_CACHE_SEC)
+    if cached is not None:
+        return cached
+
+    keys = _load_keys()
+    api_key = keys.get("google_pollen_api_key", "").strip()
+    if not api_key:
+        return {"error": "API key not configured"}
+
+    now = datetime.now(timezone.utc)
+    url = f"https://airquality.googleapis.com/v1/forecast:lookup?key={api_key}"
+    payload = {
+        "location": {"latitude": MRW_LAT, "longitude": MRW_LON},
+        "extraComputations": ["LOCAL_AQI"],
+        "universalAqi": False,
+        "customLocalAqis": [{"regionCode": "US", "aqi": "usa_epa"}],
+        "languageCode": "en",
+        "period": {
+            "startTime": (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:00:00Z"),
+            "endTime": (now + timedelta(hours=48)).strftime("%Y-%m-%dT%H:00:00Z"),
+        },
+        "pageSize": 48,
+    }
+    try:
+        body = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            url, data=body,
+            headers={"Content-Type": "application/json", "User-Agent": "radar-foundry-air-api/1"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode())
+    except Exception as e:
+        return {"error": str(e)}
+
+    from zoneinfo import ZoneInfo
+    eastern = ZoneInfo("America/New_York")
+    today_str = datetime.now(eastern).strftime("%Y-%m-%d")
+    tomorrow_str = (datetime.now(eastern) + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    buckets = {today_str: {"label": "Today", "max_aqi": -1}, tomorrow_str: {"label": "Tomorrow", "max_aqi": -1}}
+
+    for h in data.get("hourlyForecasts", []):
+        dt_str = h.get("dateTime", "")
+        try:
+            dt_utc = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            dt_local = dt_utc.astimezone(eastern)
+            day_key = dt_local.strftime("%Y-%m-%d")
+        except Exception:
+            continue
+        if day_key not in buckets:
+            continue
+        for idx in h.get("indexes", []):
+            if idx.get("code") != "usa_epa":
+                continue
+            aqi_val = idx.get("aqi", 0)
+            if aqi_val > buckets[day_key]["max_aqi"]:
+                buckets[day_key]["max_aqi"] = aqi_val
+                buckets[day_key]["category"] = idx.get("category", "")
+                buckets[day_key]["dominant"] = idx.get("dominantPollutant", "")
+
+    days = []
+    for day_key in [today_str, tomorrow_str]:
+        b = buckets[day_key]
+        if b["max_aqi"] < 0:
+            continue
+        days.append({
+            "label": b["label"],
+            "date": day_key,
+            "aqi": b["max_aqi"],
+            "category": b.get("category", ""),
+            "dominant": b.get("dominant", ""),
+        })
+
+    result = {"source": "Google Air Quality API", "days": days}
+    _set_cache("aq_forecast", result, AQ_FORECAST_CACHE_SEC)
+    return result
+
+
 def fetch_summary():
-    """Combined air summary: PM, ozone, smoke, saharan_dust, pollen."""
+    """Combined air summary: PM, ozone, smoke, saharan_dust, pollen, regional forecast."""
     pm = _fetch_pi_wx_air()
     ozone = fetch_ozone()
     saharan_dust = fetch_saharan_dust()
@@ -892,6 +975,7 @@ def fetch_summary():
             pm10 = None
 
     smoke = fetch_smoke_summary()
+    regional_forecast = fetch_regional_forecast()
 
     return {
         "location": {"lat": MRW_LAT, "lon": MRW_LON},
@@ -901,5 +985,6 @@ def fetch_summary():
         "smoke": smoke,
         "saharan_dust": saharan_dust,
         "pollen": pollen,
+        "regional_forecast": regional_forecast,
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
