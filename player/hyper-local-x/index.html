@@ -426,14 +426,15 @@
 
   function renderCloseDisplay() {
     const now = Date.now();
-    const cutoff1m = now - 60000;
+    const cutoff5m = now - RATE_WINDOW_MS;
     const cutoff4h = now - CLOSE_4HR_MS;
-    let closePerMin = 0;
+    let closeIn5m = 0;
     let close4hr = 0;
     for (const t of closeStrikeStore.values()) {
-      if (t >= cutoff1m) closePerMin++;
+      if (t >= cutoff5m) closeIn5m++;
       if (t >= cutoff4h) close4hr++;
     }
+    const closePerMin = Math.round(closeIn5m / 5);
     if (closePerMinEl) closePerMinEl.textContent = closePerMin > 0 ? String(closePerMin) : "NONE";
     if (close4hrEl) close4hrEl.textContent = close4hr > 0 ? String(close4hr) : "NONE";
     const elapsed = now - closeStrikeDisplayStart;
@@ -490,20 +491,17 @@
     strikeCountEl.textContent = strikeCountStore.size > 0 ? String(strikeCountStore.size) : "NONE";
   }
 
-  function updateStrikesPerMinute(features) {
-    if (!strikesPerMinEl || !features) return;
-    const now = Date.now();
-    const cutoff = now - 60000;
+  const RATE_WINDOW_MS = 5 * 60 * 1000;
+
+  function updateStrikesPerMinute() {
+    if (!strikesPerMinEl) return;
+    const cutoff = Date.now() - RATE_WINDOW_MS;
     let count = 0;
-    for (const f of features) {
-      const dist = f.properties?.distance_km;
-      if (dist == null || dist > STRIKE_COUNT_RADIUS_KM) continue;
-      const ts = f.properties?.timestamp_utc;
-      if (!ts) continue;
-      const t = new Date(ts).getTime();
+    for (const t of strikeCountStore.values()) {
       if (t >= cutoff) count++;
     }
-    strikesPerMinEl.textContent = count > 0 ? String(count) : "NONE";
+    const rate = Math.round(count / 5);
+    strikesPerMinEl.textContent = rate > 0 ? String(rate) : "NONE";
   }
 
   function updateDataBoxScale() {
@@ -558,7 +556,7 @@
           updateCloseStrikes(d.features);
           renderCloseDisplay();
           updateStrikeCount(d.features);
-          updateStrikesPerMinute(d.features);
+          updateStrikesPerMinute();
           applyTransformedData(d.features);
           flashDataInitialized = true;
         }
