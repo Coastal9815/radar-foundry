@@ -1,0 +1,15 @@
+---
+description: All weather data products must be near real-time
+alwaysApply: true
+---
+
+# Weather Data: Near Real-Time
+
+**All weather data efforts and products must be created in as near real-time as possible while maintaining good system architecture.**
+
+- **Target latency:** New source data should appear in the product within 1–2 minutes (same as NEXRAD).
+- **Design for incremental updates:** Prefer fetching only new data and appending, not full rebuilds. Full rebuilds are for cold start or recovery only.
+- **Do not assume batch is acceptable:** If a product takes 20+ minutes to update, question the design. Real-time is the default.
+- **Architecture still matters:** Parallelism, resource use, and maintainability remain important. Real-time does not mean sacrificing good design.
+
+**Tabular/station data (temp, humidity, pressure, wind, etc.):** Same principle. Local station data (e.g. from pi-wx / WeeWX) should flow to products in real-time—as fast as the sensor reports. No artificial batching or delays.

@@ -1,0 +1,27 @@
+---
+description: Master MRW Dashboard — layout rules, modules, pi-wx data
+globs: docs/MASTER_MRW_DASHBOARD_SPEC.md, docs/MASTER_MRW_LAYOUT_LOCKED.md, **/master-mrw/**, **/player/master-mrw/**
+alwaysApply: true
+---
+
+# Master MRW Dashboard
+
+When working on the Master MRW Dashboard or its modules, refer to `docs/MASTER_MRW_DASHBOARD_SPEC.md` and `docs/MASTER_MRW_LAYOUT_LOCKED.md`.
+
+## Layout: Explicit X/Y Coordinates (REQUIRED)
+
+**Every element's position MUST be set with explicit X/Y coordinates.** No flexbox, no `margin-left: auto`, no wraps for layout.
+
+- Use `position: absolute` with explicit `top`, `left`, and/or `right` (in px) for every label, value, and unit
+- Example: `style="position:absolute;top:9px;left:16px;"` or `style="position:absolute;top:129px;right:116px;text-align:right;width:120px;"`
+- Do NOT use flex rows, `rainValWrap`, `margin-left: auto`, or `display: flex` for positioning
+- See temp and humidity modules for the pattern; see rain module for a corrected example
+- Rain module: LOCKED. DO NOT move the labels. Values left 404 right 186; inch marks inline; in/hr stacked.
+- Air Quality module: LOCKED. Missing data → `--` only. Never "Data Unavailable".
+- Celestial module: LOCKED. Row 1: Sunrise|Sunset|Length. Row 2: Moonrise|Moonset|Phase. Row 3: Next Season. See docs/MASTER_MRW_LAYOUT_LOCKED.md.
+
+## Quick Context
+
+- LAN-only, 32" 4K, Windows Beelink
+- Modular: local realtime (pi-wx) + embedded radar products
+- Data: pi-wx `http://192.168.2.174/data/` via /pi-wx-data proxy

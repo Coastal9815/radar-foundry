@@ -1,0 +1,27 @@
+---
+description: Multi-root workspace; radar-foundry + moonriverweather-public. Use when both projects are open.
+alwaysApply: true
+---
+
+# MRW Multi-Root Workspace
+
+When this workspace is opened via `mrw-multi.code-workspace`, you have access to two projects:
+
+## radar-foundry (this project)
+
+- **Radar products:** KCLX, KJAX, MRMS, satellite
+- **Lightning products:** NexStorm, Xweather (hyper-local-x)
+- **Master MRW Dashboard:** `player/master-mrw/`
+- **Serves:** wx-i9:8080
+
+## moonriverweather-public
+
+- **Path:** `moonriverweather-public/` (or `/Volumes/Pierce_Archive/Cursor Weather Projects/moonriverweather-public`)
+- **Purpose:** New moonriverweather.com public website
+- **Consumes:** Products and data from radar-foundry, station data from pi-wx/api.moonriverweather.com
+
+## Cross-project guidance
+
+- **Data flow:** radar-foundry produces; moonriverweather-public consumes. When changing product schemas, endpoints, or URLs in radar-foundry, update moonriverweather-public if it uses them.
+- **Shared concepts:** Lightning constants, station IDs, product URLs — see `docs/lightning/LIGHTNING_RULES_REFERENCE.md` and `docs/MRW_PROJECTS.md`.
+- **Edit either project:** You can read and edit files in both folders. Use the folder name in paths when the target project matters (e.g. `moonriverweather-public/src/...`).

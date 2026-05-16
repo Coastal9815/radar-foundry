@@ -1,0 +1,15 @@
+---
+description: NEVER overwrite wx-i9 serve_root with Mac paths. Exclude serve_root from rsync; setup_serve_root creates it on wx-i9.
+alwaysApply: true
+---
+
+# Sync to wx-i9 — serve_root Hardening (LOCKED)
+
+**CRITICAL:** wx-i9 serve_root contains symlinks to `~/wx-data/served/radar_local_*/frames`. Mac serve_root has symlinks to `/Volumes/WX_SCRATCH/...` which do not exist on Linux.
+
+## Rules
+
+1. **NEVER rsync serve_root from Mac to wx-i9.** Always use `--exclude 'serve_root'` in sync_to_wx_i9.sh. The exclude is required; do not remove it.
+2. **setup_serve_root must run on wx-i9 after every sync.** It creates serve_root and correct symlinks. sync_to_wx_i9.sh does this.
+3. **If adding a new rsync or sync script** that targets wx-i9, exclude serve_root. Do not create alternate sync paths that overwrite serve_root.
+4. **Verification:** sync_to_wx_i9.sh verifies KCLX/KJAX manifests return 200 after setup. If verification fails, the script exits with error.

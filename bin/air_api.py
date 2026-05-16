@@ -45,6 +45,59 @@ AQ_FORECAST_CACHE_SEC = 3600
 # In-memory cache: {key: (expires_at, data)}
 _cache = {}
 
+# ── Server-side trend tracking ──────────────────────────────────────
+# Rolling buffer of {ts (epoch s), pm25, pm10, aqi} sampled each time
+# fetch_summary() runs (~once per minute from gen_air.sh).
+_trend_history: list[dict] = []
+_TREND_WINDOW_SEC = 20 * 60      # look-back window
+_TREND_MIN_AGE_SEC = 3 * 60      # oldest sample must be at least this old
+_TREND_THRESHOLDS = {"aqi": 3, "pm25": 2, "pm10": 3}
+
+# EPA PM2.5 AQI breakpoints (24-h / nowcast): Cp_lo, Cp_hi, I_lo, I_hi
+_AQI_PM25_BP = [
+    (0.0, 9.0, 0, 50),
+    (9.1, 35.4, 51, 100),
+    (35.5, 55.4, 101, 150),
+    (55.5, 125.4, 151, 200),
+    (125.5, 225.4, 201, 300),
+    (225.5, 325.4, 301, 500),
+]
+
+
+def _pm25_to_aqi(pm25: float | None) -> int | None:
+    """Convert PM2.5 µg/m³ to EPA AQI (linear interpolation on breakpoints)."""
+    if pm25 is None or pm25 != pm25:  # NaN check
+        return None
+    pm25 = max(0.0, pm25)
+    for cp_lo, cp_hi, i_lo, i_hi in _AQI_PM25_BP:
+        if pm25 <= cp_hi:
+            return round(i_lo + (i_hi - i_lo) * (pm25 - cp_lo) / (cp_hi - cp_lo))
+    return 500
+
+
+def _compute_trend(key: str) -> str | None:
+    """Compute trend for a metric from _trend_history. Returns 'up'/'down'/'flat'/None."""
+    if len(_trend_history) < 2:
+        return None
+    latest = _trend_history[-1]
+    cur = latest.get(key)
+    if cur is None:
+        return None
+    now_ts = latest["ts"]
+    cutoff = now_ts - _TREND_WINDOW_SEC
+    min_age = now_ts - _TREND_MIN_AGE_SEC
+    candidates = [s for s in _trend_history if cutoff <= s["ts"] <= min_age and s.get(key) is not None]
+    if not candidates:
+        return None
+    old_val = candidates[0][key]
+    diff = cur - old_val
+    threshold = _TREND_THRESHOLDS[key]
+    if diff > threshold:
+        return "up"
+    if diff < -threshold:
+        return "down"
+    return "flat"
+
 
 def _point_in_ring(lon, lat, ring):
     """Ray cast; ring is list of (lon, lat)."""
@@ -955,7 +1008,7 @@ def fetch_regional_forecast():
 
 
 def fetch_summary():
-    """Combined air summary: PM, ozone, smoke, saharan_dust, pollen, regional forecast."""
+    """Combined air summary: PM, ozone, smoke, saharan_dust, pollen, regional forecast, trends."""
     pm = _fetch_pi_wx_air()
     ozone = fetch_ozone()
     saharan_dust = fetch_saharan_dust()
@@ -977,6 +1030,21 @@ def fetch_summary():
     smoke = fetch_smoke_summary()
     regional_forecast = fetch_regional_forecast()
 
+    # ── Trend tracking ──────────────────────────────────────────────
+    import time
+    now_ts = time.time()
+    aqi_val = _pm25_to_aqi(pm25)
+    _trend_history.append({"ts": now_ts, "aqi": aqi_val, "pm25": pm25, "pm10": pm10})
+    prune_before = now_ts - _TREND_WINDOW_SEC - 120
+    while _trend_history and _trend_history[0]["ts"] < prune_before:
+        _trend_history.pop(0)
+
+    trends = {
+        "aqi": _compute_trend("aqi"),
+        "pm25": _compute_trend("pm25"),
+        "pm10": _compute_trend("pm10"),
+    }
+
     return {
         "location": {"lat": MRW_LAT, "lon": MRW_LON},
         "pm25": pm25,
@@ -986,5 +1054,6 @@ def fetch_summary():
         "saharan_dust": saharan_dust,
         "pollen": pollen,
         "regional_forecast": regional_forecast,
+        "trends": trends,
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }

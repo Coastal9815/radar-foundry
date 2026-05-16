@@ -47,8 +47,12 @@
         const n = (nowJ && nowJ.now) ? nowJ.now : {};
         days = num(x.days_since_rain ?? x.daySinceRain ?? x.day_since_rain ?? n.days_since_rain ?? n.daySinceRain);
         const todayIn = Number(x.today_in ?? x.rain_today ?? x.rain_today_in ?? n.rain_today ?? n.rain_today_in ?? 0);
-        if (todayIn > 0.001) {
+        const rateIn = Number(x.rate_inhr ?? x.rain_rate_in ?? 0);
+        const last24h = Number(x.last_24h_in ?? 0);
+        if (rateIn > 0 || x.is_raining || todayIn > 0.001) {
           days = 0;
+        } else if (last24h > 0) {
+          days = 1;
         } else if (days == null && x.storm_last_end_at != null) {
           const endTs = Number(x.storm_last_end_at);
           if (Number.isFinite(endTs)) days = Math.floor((Date.now() / 1000 - endTs) / 86400);

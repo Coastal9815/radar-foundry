@@ -127,18 +127,26 @@
           deficitLbl.textContent = deficitExcess >= 0.01 ? "Year Excess" : "Year Deficit";
         }
 
-        // Drought: parse USDM CountyStatistics response, pick highest category with >0
+        // Drought: prefer ArcGIS point query (DM at MRW coords), fall back to county stats
         let droughtIdx = 0;
         const droughtData = droughtRes?.status === "fulfilled" ? droughtRes.value : null;
-        if (droughtData && Array.isArray(droughtData) && droughtData.length > 0) {
-          const latest = droughtData[0];
-          const pct = (k) => (typeof latest[k] === "number" ? latest[k] : parseFloat(latest[k]) || 0);
-          const d4 = pct("d4"), d3 = pct("d3"), d2 = pct("d2"), d1 = pct("d1"), d0 = pct("d0");
-          if (d4 > 0) droughtIdx = 5;
-          else if (d3 > 0) droughtIdx = 4;
-          else if (d2 > 0) droughtIdx = 3;
-          else if (d1 > 0) droughtIdx = 2;
-          else if (d0 > 0) droughtIdx = 1;
+        if (droughtData && typeof droughtData.point_dm === "number") {
+          // point_dm: 0=D0, 1=D1, 2=D2, 3=D3, 4=D4; map to bar index (0=Normal, 1=D0..5=D4)
+          droughtIdx = droughtData.point_dm + 1;
+        } else if (droughtData) {
+          // Fallback: county-level stats (old format: array, or new .county array)
+          const countyArr = Array.isArray(droughtData) ? droughtData
+            : (Array.isArray(droughtData.county) ? droughtData.county : []);
+          if (countyArr.length > 0) {
+            const latest = countyArr[0];
+            const pct = (k) => (typeof latest[k] === "number" ? latest[k] : parseFloat(latest[k]) || 0);
+            const d4 = pct("d4"), d3 = pct("d3"), d2 = pct("d2"), d1 = pct("d1"), d0 = pct("d0");
+            if (d4 > 0) droughtIdx = 5;
+            else if (d3 > 0) droughtIdx = 4;
+            else if (d2 > 0) droughtIdx = 3;
+            else if (d1 > 0) droughtIdx = 2;
+            else if (d0 > 0) droughtIdx = 1;
+          }
         }
         const cat = DROUGHT_CATEGORIES[droughtIdx];
         const arrow = container.querySelector(".droughtBarArrow");

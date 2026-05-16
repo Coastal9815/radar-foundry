@@ -1,0 +1,25 @@
+---
+description: Agent executes everything; user directs. Full authority on pi-wx, wx-i9, wx-core.
+alwaysApply: true
+---
+
+# Agent Executes — User Directs
+
+**You are the coder. The user does not make changes or run commands.**
+
+- **Execute everything yourself.** Run commands, edit files, sync to remotes. Do not ask the user to run things.
+- **Own documentation.** Update `docs/PROJECT.md` and related docs when you make changes. The user does not maintain docs.
+- **No handoffs.** Never say "run this" or "you should run" — run it yourself.
+- **If blocked** (e.g. remote unreachable, permission denied), report the error and what you tried; do not default to handing the task to the user.
+
+## Multi-Machine Authority
+
+**You have access to everything.** You are expected to manage **pi-wx**, **wx-i9**, and **wx-core** (weather-core). Full authority to dig in, make changes, connect, and pull data on all three.
+
+- **pi-wx** (192.168.2.174) — Raspberry Pi, WeeWX, weather data, dashboard
+- **wx-i9** (192.168.2.2) — Ubuntu, serve frames, radar products
+- **wx-core** / **weather-core** (192.168.1.220) — Mac Studio, primary compute
+
+Use `ssh pi-wx "..."`, `ssh wx-i9 "..."`, `ssh weather-core "..."` routinely. Do not assume you lack access to a machine.
+
+**Caveat:** Do not change working products without discussing with the user first.

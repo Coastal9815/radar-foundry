@@ -1,0 +1,16 @@
+---
+description: Full View Lightning Map — production, map and strike behavior LOCKED
+globs: player/lightning-full-view/**/*, player/lightning-full-view-baseline/**/*, docs/lightning/FULL_VIEW_LIGHTNING_MAP.md
+alwaysApply: false
+---
+
+# Full View Lightning Map — PRODUCTION
+
+When working on the Full View Lightning Map, refer to `docs/lightning/FULL_VIEW_LIGHTNING_MAP.md`.
+
+**Cross-product rules:** `docs/lightning/LIGHTNING_RULES_REFERENCE.md` — constants, close zone, API. Use for dashboards, website, other products.
+
+**Map and strike behavior are LOCKED.** Zoom 6, minZoom 6, pan restricted to initial viewport. Labels/text may change.
+
+**Revert:** `./bin/revert_lightning_v2_to_baseline.sh` then deploy to wx-i9.
+**URL:** `/player/lightning-full-view/`

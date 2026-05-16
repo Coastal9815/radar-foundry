@@ -94,32 +94,64 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_error(502, f"pi-wx proxy error: {e}")
 
     def _proxy_drought(self, path):
-        """Proxy Chatham County drought stats from USDM API. Updates weekly (Thursday)."""
+        """Drought at MRW coords via USDM ArcGIS point query + county stats fallback."""
+        import json as _json
+
+        MRW_LAT, MRW_LON = 31.919, -81.076
+        ARCGIS_URL = (
+            "https://services5.arcgis.com/0OTVzJS4K09zlixn/arcgis/rest/services/"
+            "USDM_current/FeatureServer/0/query"
+            f"?geometry={MRW_LON},{MRW_LAT}&geometryType=esriGeometryPoint"
+            "&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=DM"
+            "&returnGeometry=false&f=json"
+        )
+
+        point_dm = None
+        try:
+            req = urllib.request.Request(ARCGIS_URL, headers={
+                "User-Agent": "radar-foundry-serve-frames/1"
+            })
+            with urllib.request.urlopen(req, timeout=15) as r:
+                data = _json.loads(r.read().decode())
+            features = data.get("features", [])
+            dm_vals = [f["attributes"]["DM"] for f in features
+                       if "attributes" in f and "DM" in f["attributes"]]
+            if dm_vals:
+                point_dm = max(dm_vals)
+        except Exception:
+            pass
+
+        # Also fetch county stats for backward compatibility
         from datetime import datetime
         now = datetime.now()
         today = f"{now.month}/{now.day}/{now.year}"
         start = f"{now.month}/1/{now.year}"
-        url = (
+        county_url = (
             "https://usdmdataservices.unl.edu/api/CountyStatistics/"
             "GetDroughtSeverityStatisticsByAreaPercent"
             f"?aoi=13051&startdate={start}&enddate={today}&statisticsType=1"
         )
+        county_data = []
         try:
-            req = urllib.request.Request(url, headers={
+            req = urllib.request.Request(county_url, headers={
                 "User-Agent": "radar-foundry-serve-frames/1",
                 "Accept": "application/json"
             })
             with urllib.request.urlopen(req, timeout=15) as r:
-                body = r.read()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Cache-Control", "public, max-age=86400")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-        except Exception as e:
-            self.send_error(502, f"drought proxy error: {e}")
+                county_data = _json.loads(r.read().decode())
+        except Exception:
+            pass
+
+        result = {"point_dm": point_dm, "county": county_data}
+        body = _json.dumps(result).encode()
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_air_api(self, path):
         """Serve /api/air/summary: PM, ozone, smoke (NOAA HMS), saharan dust, pollen (server-side)."""

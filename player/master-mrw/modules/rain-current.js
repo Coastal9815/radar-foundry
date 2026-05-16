@@ -59,8 +59,12 @@
         const storm = r.storm_in ?? r.storm_rain_in ?? r.stormRain ?? r.storm_rain ?? n.storm_rain_in ?? n.stormRain;
         let days = r.days_since_rain ?? r.daySinceRain ?? r.day_since_rain ?? n.days_since_rain ?? n.daySinceRain;
         const todayIn = Number(r.today_in ?? r.rain_today ?? r.rain_today_in ?? n.rain_today ?? n.rain_today_in ?? 0);
-        if (todayIn > 0.001) {
-          days = 0; // rained today
+        const rateIn = Number(r.rate_inhr ?? r.rain_rate_in ?? 0);
+        const last24h = Number(r.last_24h_in ?? 0);
+        if (rateIn > 0 || r.is_raining || todayIn > 0.001) {
+          days = 0;
+        } else if (last24h > 0) {
+          days = 1;
         } else if (days == null && r.storm_last_end_at != null) {
           const endTs = Number(r.storm_last_end_at);
           if (Number.isFinite(endTs)) days = Math.floor((Date.now() / 1000 - endTs) / 86400);

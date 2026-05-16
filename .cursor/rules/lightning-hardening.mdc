@@ -1,0 +1,34 @@
+---
+description: Lightning pipeline is KEY weather architecture. Never break it. Hardening rules.
+alwaysApply: true
+---
+
+# Lightning Pipeline — Hardening (KEY)
+
+**Lightning is a critical MRW weather product.** The pipeline must be HARD, STRONG, and RELIABLE.
+
+## Rules
+
+1. **Never remove hardening.** Retries, atomic writes, timeouts, watchdog integration are required. Do not "simplify" by removing them.
+
+2. **lightning_nex_tail.py**
+   - SSH/SCP: 3 retries with 2s delay; ConnectTimeout=5; ServerAliveInterval=10
+   - Atomic writes for lightning_status.json, lightning_recent.json (temp + rename)
+   - Status must include `last_success_at_utc` for watchdog
+   - Catch subprocess.TimeoutExpired; never crash on transient network failure
+
+3. **generate_lightning_points.py**
+   - Atomic write (temp + rename)
+   - 60-minute time window filter (never show stale strikes)
+   - SCP to wx-i9: 3 retries, 20s timeout
+
+4. **Watchdog** (bin/watchdog_all.sh)
+   - Lightning status staleness: 5 min threshold
+   - Kill lightning_nex_tail if stale; launchd KeepAlive restarts
+   - Kill if process running >15 min (stuck)
+
+5. **launchd** (com.mrw.lightning_nex_tail)
+   - ThrottleInterval=10 (prevent restart storms)
+   - KeepAlive=true
+
+6. **Changes to lightning code** — Run tests, restart pipeline, verify status updates within 1 min.

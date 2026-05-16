@@ -1,0 +1,20 @@
+---
+description: Lightning rules for dashboards, website, map players — use LIGHTNING_RULES_REFERENCE
+globs: docs/lightning/**/*, player/**/*lightning*/**/*, player/master-mrw/**/*
+alwaysApply: false
+---
+
+# Lightning Rules — Cross-Product
+
+When adding or modifying lightning in dashboards, website, or any product:
+
+**Use `docs/lightning/LIGHTNING_RULES_REFERENCE.md`** — constants, thresholds, close-zone behavior, API schema.
+
+**Key constants:**
+- MRW center: 31.919173, -81.075938
+- Close zone: 25 mi (40.2336 km)
+- Strike count radius: 300 mi (482.803 km)
+
+**API:** `lightning_points_v2.geojson` at `/lightning_points_v2.geojson` (wx-i9:8080)
+
+**Close zone:** distance_km <= 40.2336 → red bolt 0–5 min, red dot 5–15 min, yellow dot 15–30 min, gone 30+ min.
