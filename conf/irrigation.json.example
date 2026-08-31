@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "rain_rate_inhr": 0.02,
+  "rain_60m_in": 0.1,
+  "rain_24h_in": 0.5,
+  "freeze_temp_f": 32,
+  "wind_gust_mph": 20,
+  "wind_gust_clear_mph": 17,
+  "rain_soak_hours": 12,
+  "rachio_auto_delay": false,
+  "rachio_rain_delay_entity": "switch.YOUR_RACHIO_RAIN_DELAY_ENTITY",
+  "rachio_delay_hours": 24,
+  "nws_forecast_enabled": true,
+  "nws_forecast_pop_pct": 60,
+  "nws_forecast_lat": 31.919,
+  "nws_forecast_lon": -81.076
+}
