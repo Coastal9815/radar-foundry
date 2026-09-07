@@ -21,14 +21,16 @@ The agent keeps these updated via `scp` from the Office Mac repo; no manual step
 
 Merge or replace the `[AirLink]` block so it includes:
 
-- `poll_interval` — seconds between background HTTP fetches to the AirLink (e.g. **30**).  
+- `poll_interval` — seconds between background HTTP fetches to the AirLink (**60**).  
 - `timeout` — per-request timeout in seconds (e.g. **12**; stock default in extension is **10**; **2** was too aggressive on this LAN).
+
+The AirLink (DID `001D0A101D3F`, `192.168.1.167`) is **Wi-Fi only** — no Ethernet jack. Its local HTTP server wedges under concurrent polls (connect timeouts / connection reset). Do **not** poll it every few seconds.
 
 Example (values can be tuned):
 
 ```ini
 [AirLink]
-    poll_interval = 30
+    poll_interval = 60
     [[Sensor1]]
         enable = True
         hostname = 192.168.1.167
@@ -115,7 +117,13 @@ to:
 
 ---
 
-## 5. Related
+## 5. Related — `gen_air.sh` (do not hammer)
 
-- Air quality JSON for MRW: `gen_air.sh` → `air.json` (see `docs/pi-wx-weather-inventory.md`).  
-- WeeWX still ingests PM fields into loop/archive via this extension when the AirLink responds.
+Site `air.json` is produced by `/home/scott/dashboard/bin/gen_air.sh` via `mrw-gen-air.timer`.
+
+- Timer must be **`OnUnitActiveSec=30`** (was 3s — that plus WeeWX caused ConnectTimeout storms).  
+- Script: curl `--connect-timeout 3 --max-time 5 --retry 2`; on failure keep last-good PM and still refresh wx-i9 ozone/smoke.  
+- Stale threshold: **90 s** (was 10 s).  
+- Canonical copies: `moonriverweather-public/scripts/pi-wx/gen_air.sh` and `scripts/pi-wx/systemd/mrw-gen-air.{timer,service}`.
+
+WeeWX still ingests PM into loop/archive when the AirLink responds. Site truth is `gen_air`, not WeeWX.

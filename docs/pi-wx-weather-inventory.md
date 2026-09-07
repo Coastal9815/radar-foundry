@@ -13,7 +13,7 @@ Generated from live exploration.
 | **Davis WLL** | Weather Link Live at 192.168.1.122 — primary sensor API |
 | **Dashboard** | Custom `gen_*.sh` scripts in `/home/scott/dashboard/bin/` — produce JSON for MRW |
 | **HTTP** | Nginx serves `/data/*` → symlinked to `/home/scott/dashboard/data/` |
-| **AirLink (WeeWX)** | Davis AirLink at `192.168.1.167`; `user.airlink` injects PM into loop/archive. Timeout / poll tuning and `airlink.py` patch: **`docs/pi-wx/AIRLINK_WEEWX_PATCH.md`**, patch file **`patches/pi-wx/weewx-airlink-poll-interval.patch`**. |
+| **AirLink (WeeWX)** | Davis AirLink at `192.168.1.167` (**Wi-Fi only**, no Ethernet). `user.airlink` injects PM into loop/archive at **60 s**. Timeout / poll tuning and `airlink.py` patch: **`docs/pi-wx/AIRLINK_WEEWX_PATCH.md`**, patch file **`patches/pi-wx/weewx-airlink-poll-interval.patch`**. Do not poll faster — the local HTTP stack wedges. |
 | **Galaxy A9+ UI** | `http://192.168.2.174/ui/galaxyA9p11.html` — static files in `~/dashboard/ui/`. **Source of truth in git:** `radar-foundry/pi-wx-dashboard/galaxy-a9p11/`; deploy: **`bin/deploy_pi_wx_galaxy_a9p11.sh`**. |
 
 **Data flow:** WLL → gen_now.sh → now.json → gen_wind.sh, gen_extremes.sh, gen_computed_rt.sh → wind.json, extremes.json, computed_rt.json. Extremes also sync from WeeWX archive via `sync_weewx_wind_gust_extremes.py`.
@@ -123,7 +123,7 @@ Generated from live exploration.
 | mrw-gen-rain | ~15s | gen_rain.sh |
 | mrw-gen-status | ~15s | gen_status.sh |
 | mrw-gen-status-rt | ~15s | gen_status_rt.sh |
-| mrw-gen-air | ~15s | gen_air.sh |
+| mrw-gen-air | 30s | gen_air.sh (AirLink; last-good on timeout) |
 | mrw-gen-climatology | ~15s | gen_climatology.sh |
 | mrw-gen-tide | 10 min | gen_tide.sh |
 | mrw-gen-astro | 10 min | gen_astro.sh |
