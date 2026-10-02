@@ -157,15 +157,26 @@ def frame_name_to_dt(name: str):
     return datetime.strptime(ts, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
 
 
+def _ceil_cadence(dt: datetime, cadence_min: int) -> datetime:
+    """Round dt up to the next cadence boundary (minute resolution)."""
+    dt = dt.replace(second=0, microsecond=0)
+    rem = dt.minute % cadence_min
+    if rem == 0:
+        return dt
+    return dt + timedelta(minutes=cadence_min - rem)
+
+
 def slot_select_loop(pool: list[str], num_slots: int = 36, cadence_min: int = 10) -> list[str]:
-    """From pool of frame names, pick best for each 10-min slot. Each file used at most once. Returns frame names (oldest first)."""
+    """From pool of frame names, pick best for each cadence slot. Returns frame names (oldest first)."""
     if not pool:
         return []
     sorted_pool = sorted(pool, key=lambda n: frame_name_to_dt(n))
-    latest_dt = frame_name_to_dt(sorted_pool[-1])
-    slot_min = (latest_dt.minute // cadence_min) * cadence_min
-    anchor = latest_dt.replace(minute=slot_min, second=0, microsecond=0)
+    if num_slots == 1:
+        return [sorted_pool[-1]]
 
+    latest_dt = frame_name_to_dt(sorted_pool[-1])
+    # Floor anchor excluded frames between slot boundary and latest (e.g. 21:04:39 with 10-min slots).
+    anchor = _ceil_cadence(latest_dt, cadence_min)
     slots = [anchor - timedelta(minutes=i * cadence_min) for i in range(num_slots - 1, -1, -1)]
     used = set()
     result = []
@@ -178,11 +189,33 @@ def slot_select_loop(pool: list[str], num_slots: int = 36, cadence_min: int = 10
             if dt <= slot_dt:
                 best = name
             else:
+                if best is None:
+                    best = name
                 break
         if best:
             used.add(best)
             result.append(best)
-    return sorted(result, key=lambda n: frame_name_to_dt(n))
+
+    newest = sorted_pool[-1]
+    if newest not in result:
+        result.append(newest)
+    result = sorted(result, key=lambda n: frame_name_to_dt(n))
+    if len(result) > num_slots:
+        result = result[-num_slots:]
+    return result
+
+
+def _run_post_publish_all(args, regions, base_dir, scratch, remote_path, product):
+    with ThreadPoolExecutor(max_workers=args.post_publish_workers) as ex:
+        futs = {
+            ex.submit(_post_publish_region, args, region, base_dir, scratch, remote_path, product): region["id"]
+            for region in regions
+        }
+        for fut in as_completed(futs):
+            rid, ok, msg = fut.result()
+            if not ok:
+                print(f"Post-publish failed {rid}: {msg}", file=sys.stderr)
+                sys.exit(1)
 
 
 def main():
@@ -264,7 +297,9 @@ def main():
             newest = frames[0]
             frame_name = f"{newest['ts_raw'][:8]}T{newest['ts_raw'][9:15]}Z.png"
             if frame_name in pool_files:
-                print(f"mrms: already have {frame_name}, skip", flush=True)
+                print(f"mrms: already have {frame_name}, refresh manifests", flush=True)
+                if remote_path or args.local_only:
+                    _run_post_publish_all(args, regions, base_dir, scratch, remote_path, product)
                 for p in scratch.iterdir():
                     if p.is_dir():
                         shutil.rmtree(p)
@@ -326,16 +361,8 @@ def main():
                     print(f"Rsync failed {rid}: {msg}", file=sys.stderr)
                     sys.exit(1)
 
-    with ThreadPoolExecutor(max_workers=args.post_publish_workers) as ex:
-        futs = {
-            ex.submit(_post_publish_region, args, region, base_dir, scratch, remote_path, product): region["id"]
-            for region in regions
-        }
-        for fut in as_completed(futs):
-            rid, ok, msg = fut.result()
-            if not ok:
-                print(f"Post-publish failed {rid}: {msg}", file=sys.stderr)
-                sys.exit(1)
+    if rendered or args.local_only:
+        _run_post_publish_all(args, regions, base_dir, scratch, remote_path, product)
 
     for p in scratch.iterdir():
         if p.is_dir():
