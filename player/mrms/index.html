@@ -103,6 +103,7 @@
   const OPACITY_KEY = "mrw_mrms_opacity";
   const FRAME_LIMIT_OPTS = [6, 12, 24, 36];
   let allFrames = [], frames = [], i = 0, timer = null;
+  let mapReady = false;
   let frameLimit = parseInt(params.get("frameLimit") || localStorage.getItem(FRAME_LIMIT_KEY) || "36", 10);
   if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 36;
   let radarOpacity = parseInt(params.get("opacity") || localStorage.getItem(OPACITY_KEY) || "52", 10);
@@ -202,6 +203,13 @@
   }
 
   const LOOP_HOLD_MS = 1000;
+
+  function ensureAutoplay() {
+    if (!autoplay || timer || !frames.length || !mapReady) return;
+    document.getElementById("play").textContent = "Pause";
+    timer = setInterval(advance, Number(document.getElementById("speed").value));
+  }
+
   function advance() {
     if (i >= frames.length - 1) {
       clearInterval(timer);
@@ -285,6 +293,7 @@
   });
 
   map.on("load", async () => {
+    mapReady = true;
     map.resize();
     const titleEl = document.getElementById("titleEl");
     if (titleEl) titleEl.textContent = "MRMS — Loading…";
@@ -327,11 +336,9 @@
         paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 }
       });
       setFrame(i);
-      if (autoplay && !timer) {
-        document.getElementById("play").textContent = "Pause";
-        timer = setInterval(advance, Number(document.getElementById("speed").value));
-      }
+      ensureAutoplay();
     }
+    ensureAutoplay();
     try {
       const alerts = await loadAlerts();
       addAlertLayers(alerts);
@@ -367,6 +374,7 @@
         if (hasNew) { i = frames.length - 1; setFrame(i); }
         else { const idx = frames.indexOf(cur); i = idx >= 0 ? idx : frames.length - 1; if (idx < 0) setFrame(i); }
       }
+      ensureAutoplay();
     } catch (_) {}
   }
 

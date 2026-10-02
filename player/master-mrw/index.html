@@ -560,17 +560,15 @@
             </svg>
           </div>
         </div>
-        <div class="tile middleBottomTile">
-          <div class="ph">Middle bottom — placeholder</div>
-        </div>
+        <div class="tile middleBottomTile"></div>
       </div>
 
       <!-- Right column -->
       <div class="tile radarTile" id="radarTile" style="grid-column:3; grid-row:1;">
-        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&v=5" title="KCLX Radar"></iframe>
+        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&speed=215&v=6" title="KCLX Radar"></iframe>
       </div>
       <div class="tile radarTile regionTile" style="grid-column:3; grid-row:2;">
-        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&opacity=42&v=1" title="MRMS Eastern US"></iframe>
+        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&speed=215&opacity=42&v=2" title="MRMS Eastern US"></iframe>
       </div>
     </main>
     <div class="verBadge" aria-hidden="true">LOCKED</div>
@@ -687,14 +685,27 @@
         const dir = Number(w.dir_deg ?? w.wind_dir_deg);
         const speed = Number(w.speed_mph ?? w.wind_speed_mph);
         setNum("w_speed_txt", speed);
-        setText("w_dir_txt", Number.isFinite(dir) ? Math.round(dir) + "°" : "--");
+        const dirReliable = w.dir_reliable !== false;
+        const dirProxy = w.dir_proxy_active === true;
+        const dirSuffix = dirProxy ? " °" : (dirReliable ? "°" : "° ?");
+        setText("w_dir_txt", Number.isFinite(dir) ? Math.round(dir) + dirSuffix : "--");
         setNum("w_avg10", w.avg_10m_mph ?? w.avg10_mph);
         setNum("w_gust", w.gust_mph ?? w.wind_gust_mph);
         setNum("w_max10", w.max_gust_10m_mph ?? w.max10_mph);
         const maxDay = w.max_day_mph ?? w.max_gust_day_mph;
         if (maxDay != null && Number.isFinite(maxDay)) setText("w_maxday", Math.round(maxDay));
         const needle = $("w_needle");
-        if (needle && Number.isFinite(dir)) needle.setAttribute("transform", "rotate(" + dir + " 180 180)");
+        if (needle && Number.isFinite(dir)) {
+          needle.setAttribute("transform", "rotate(" + dir + " 180 180)");
+          needle.setAttribute("opacity", (dirReliable || dirProxy) ? "1" : "0.45");
+        }
+        const dirTxt = $("w_dir_txt");
+        if (dirTxt) {
+          const title = dirProxy
+            ? (w.dir_fault_note || "Direction from nearby NWS (~5 min); speed/gust local.")
+            : (dirReliable ? "" : (w.dir_fault_note || "Wind direction unreliable — vane may be stuck"));
+          dirTxt.setAttribute("title", title);
+        }
         const dAvg = Number(w.avg_10m_dir_deg ?? w.avg10_dir_deg ?? dir);
         const dGust = Number(w.gust_dir_deg ?? w.wind_gust_dir ?? dir);
         const dMax10 = Number(w.max_gust_10m_dir_deg ?? w.max10_dir_deg ?? dir);
@@ -828,6 +839,7 @@
       setTimeout(condPoll, 5000);
     })();
   </script>
-  <script src="/player/master-mrw/modules/mrw-alerts.js?v=20260409rip"></script>
+  <script src="/player/master-mrw/modules/temp-detail.js?v=1"></script>
+  <script src="/player/master-mrw/modules/mrw-alerts.js?v=20260707xwx"></script>
 </body>
 </html>
