@@ -118,7 +118,8 @@
   if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 72;
   const autoplay = params.has("autoplay") || params.has("play");
   const locked = params.has("locked") || params.has("embed");
-  const parentDrive = params.has("parentDrive") || params.get("parentDrive") === "1";
+  // parentDrive=1 on dashboard iframes only — top-level test URLs still use the local timer.
+  const parentDrive = (params.has("parentDrive") || params.get("parentDrive") === "1") && window.parent !== window;
   if (locked) document.body.classList.add("embed-locked");
   const defaultSpeed = Math.max(50, Math.min(500, parseInt(params.get("speed") || "215", 10)));
   const POLL_MS = 15000;
