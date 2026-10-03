@@ -37,8 +37,6 @@
       font-size:14px; font-weight:600; font-variant-numeric:tabular-nums;
       border-radius:6px; pointer-events:none;
     }
-    body.embed-locked .top { display: none !important; }
-    body.embed-locked .regions { display: none !important; }
   </style>
 </head>
 <body>
@@ -111,12 +109,7 @@
   radarOpacity = Math.max(30, Math.min(100, radarOpacity));
   const regionParam = params.get("region") || "eastern_us";
   const autoplay = params.has("autoplay") || params.has("play");
-  const locked = params.has("locked") || params.has("embed");
-  const parentDrive = (params.has("parentDrive") || params.get("parentDrive") === "1") && window.parent !== window;
-  if (locked) document.body.classList.add("embed-locked");
-  const defaultSpeed = Math.max(50, Math.min(500, parseInt(params.get("speed") || "215", 10)));
   const POLL_MS = 15000;
-  const POLL_MS_EMBED = 60000;
   const ALERT_POLL_MS = 120000;
 
   let overlayCoords = null;
@@ -182,10 +175,6 @@
   const idxEl = document.getElementById("idx");
   const tsEl = document.getElementById("ts");
   const frameStampEl = document.getElementById("frameStamp");
-  const speedEl = document.getElementById("speed");
-  const speedValEl = document.getElementById("speedVal");
-  speedEl.value = String(defaultSpeed);
-  speedValEl.textContent = String(defaultSpeed);
   frameLimitEl.value = String(frameLimit);
   frameLimitEl.onchange = () => {
     frameLimit = parseInt(frameLimitEl.value, 10);
@@ -201,7 +190,7 @@
     if (!frames.length) return;
     i = Math.max(0, Math.min(n, frames.length - 1));
     const name = frames[i];
-    const url = frameBase + name + "?v=" + name;
+    const url = frameBase + name + "?v=" + Date.now();
     idxEl.textContent = i + 1;
     countEl.textContent = frames.length;
     const ts = name.replace(".png", "");
@@ -213,49 +202,17 @@
   }
 
   const LOOP_HOLD_MS = 1000;
-
-  function tickMs() {
-    return Number(speedEl.value) || defaultSpeed;
-  }
-
-  function startAutoplayTimer() {
-    if (!autoplay || timer || parentDrive || !frames.length) return;
-    document.getElementById("play").textContent = "Pause";
-    timer = setInterval(advance, tickMs());
-  }
-
   function advance() {
     if (i >= frames.length - 1) {
-      if (locked || parentDrive) {
-        setFrame(0);
-        return;
-      }
       clearInterval(timer);
       timer = null;
       setTimeout(() => {
         setFrame(0);
-        timer = setInterval(advance, tickMs());
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
       }, LOOP_HOLD_MS);
     } else {
       setFrame(i + 1);
     }
-  }
-
-  function installParentDriveHook() {
-    if (!parentDrive) return;
-    window.__mrwRadarAdvance = function () {
-      if (!autoplay || !frames.length) return false;
-      if (!map.getSource("mrms")) return false;
-      document.getElementById("play").textContent = "Pause";
-      advance();
-      return true;
-    };
-    window.addEventListener("message", (ev) => {
-      if (ev.origin !== window.location.origin) return;
-      const d = ev.data;
-      if (d !== "mrw-radar-tick" && (!d || d.type !== "mrw-radar-tick")) return;
-      window.__mrwRadarAdvance();
-    });
   }
 
   async function loadManifestForRegion(rid) {
@@ -329,21 +286,9 @@
 
   map.on("load", async () => {
     map.resize();
-    if (locked) {
-      map.dragPan.disable();
-      map.scrollZoom.disable();
-      map.doubleClickZoom.disable();
-      map.touchZoomRotate.disable();
-      map.boxZoom.disable();
-      map.keyboard.disable();
-      const z = map.getZoom();
-      map.setMinZoom(z);
-      map.setMaxZoom(z);
-      map.once("idle", () => map.setMaxBounds(map.getBounds()));
-    }
     const titleEl = document.getElementById("titleEl");
     if (titleEl) titleEl.textContent = "MRMS — Loading…";
-    if (!locked) REGIONS.forEach((r) => {
+    REGIONS.forEach((r) => {
       const wrap = document.createElement("div");
       wrap.className = "thumb" + (r.id === initialRegion.id ? " active" : "");
       const img = document.createElement("img");
@@ -382,8 +327,10 @@
         paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 }
       });
       setFrame(i);
-      installParentDriveHook();
-      startAutoplayTimer();
+      if (autoplay && !timer) {
+        document.getElementById("play").textContent = "Pause";
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }
     }
     try {
       const alerts = await loadAlerts();
@@ -402,19 +349,6 @@
       const t = document.getElementById("titleEl");
       if (t) t.textContent = "MRMS Composite Reflectivity";
       if (newAll.length === 0) return;
-      if (parentDrive) {
-        const curName = frames.length ? frames[i] : null;
-        allFrames = newAll;
-        frames = allFrames.slice(-frameLimit);
-        countEl.textContent = frames.length;
-        if (curName) {
-          const idx = frames.indexOf(curName);
-          i = idx >= 0 ? idx : Math.min(i, frames.length - 1);
-        } else {
-          i = Math.min(i, frames.length - 1);
-        }
-        return;
-      }
       const ourLast = frames.length ? frames[frames.length - 1] : null;
       const hasNew = ourLast !== newAll[newAll.length - 1];
       const cur = frames[i];
@@ -462,21 +396,8 @@
   document.addEventListener("fullscreenchange", () => map.resize());
 
   document.getElementById("speedVal").textContent = document.getElementById("speed").value;
-  setInterval(refreshManifest, locked ? POLL_MS_EMBED : POLL_MS);
-  if (!locked) setTimeout(refreshManifest, 2000);
-  if (locked && autoplay && !parentDrive) {
-    let lastStamp = "";
-    let lastChange = Date.now();
-    setInterval(() => {
-      const s = frameStampEl.textContent;
-      if (s && s !== lastStamp) { lastStamp = s; lastChange = Date.now(); return; }
-      if (frames.length <= 1 || !map.getSource("mrms")) return;
-      if (Date.now() - lastChange < 10000) return;
-      lastChange = Date.now();
-      startAutoplayTimer();
-      setFrame((i + 1) % frames.length);
-    }, 2500);
-  }
+  setInterval(refreshManifest, POLL_MS);
+  setTimeout(refreshManifest, 2000);
   setInterval(async () => { const a = await loadAlerts(); if (a) addAlertLayers(a); }, ALERT_POLL_MS);
 })();
 </script>

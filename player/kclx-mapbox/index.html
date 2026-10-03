@@ -36,7 +36,6 @@
     @media (max-width: 480px), (max-height: 400px) {
       .frameStamp { padding:2px 4px; font-size:10px; bottom:4px; right:4px; }
     }
-    body.embed-locked .top { display: none !important; }
   </style>
 </head>
 <body>
@@ -112,18 +111,12 @@
   const FRAME_LIMIT_KEY = "mrw_frame_limit_kclx_mapbox";
   const FRAME_LIMIT_OPTS = [6, 12, 24, 36, 48, 72];
   let allFrames = [], frames = [], i = 0, timer = null;
-  let mapReady = false;
-  window.__mrwRadarReady = false;
   let frameLimit = parseInt(params.get("frameLimit") || localStorage.getItem(FRAME_LIMIT_KEY) || "72", 10);
   if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 72;
   const autoplay = params.has("autoplay") || params.has("play");
   const locked = params.has("locked") || params.has("embed");
-  // parentDrive=1 on dashboard iframes only — top-level test URLs still use the local timer.
-  const parentDrive = (params.has("parentDrive") || params.get("parentDrive") === "1") && window.parent !== window;
-  if (locked) document.body.classList.add("embed-locked");
   const defaultSpeed = Math.max(50, Math.min(500, parseInt(params.get("speed") || "215", 10)));
   const POLL_MS = 15000;
-  const POLL_MS_EMBED = 60000;
 
   const frameLimitEl = document.getElementById("frameLimit");
   const countEl = document.getElementById("count");
@@ -145,92 +138,34 @@
     if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); }
   };
 
-  function ensureRadarLayer() {
-    if (!mapReady || !frames.length) return false;
-    try {
-      if (!map.getSource("radar")) {
-        map.addSource("radar", {
-          type: "image",
-          url: frameBase + frames[i] + "?v=" + frames[i],
-          coordinates: coords
-        });
-        map.addLayer({
-          id: "radar-layer",
-          type: "raster",
-          source: "radar",
-          paint: { "raster-fade-duration": 0, "raster-opacity": 0.9 }
-        });
-      }
-      window.__mrwRadarReady = true;
-      return true;
-    } catch (e) {
-      console.error("ensureRadarLayer:", e);
-      window.__mrwRadarReady = false;
-      return false;
-    }
-  }
-
   function setFrame(n) {
     if (!frames.length) return;
     i = Math.max(0, Math.min(n, frames.length - 1));
     const name = frames[i];
-    const url = frameBase + name + "?v=" + name;
+    const url = frameBase + name + "?v=" + Date.now();
     idxEl.textContent = i + 1;
     countEl.textContent = frames.length;
     const ts = name.replace(".png", "");
     const timeStr = new Date(Date.UTC(parseInt(ts.slice(0,4)), parseInt(ts.slice(4,6))-1, parseInt(ts.slice(6,8)), parseInt(ts.slice(9,11)), parseInt(ts.slice(11,13)))).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",hour12:true});
     tsEl.textContent = timeStr;
     frameStampEl.textContent = timeStr;
-    if (!mapReady) return;
-    if (!map.getSource("radar") && !ensureRadarLayer()) return;
     const src = map.getSource("radar");
     if (src) src.updateImage({ url: url });
   }
 
   const LOOP_HOLD_MS = 1000;
 
-  function tickMs() {
-    return Number(speedEl.value) || defaultSpeed;
-  }
-
-  function startAutoplayTimer() {
-    if (!autoplay || timer || parentDrive || !frames.length) return;
-    document.getElementById("play").textContent = "Pause";
-    timer = setInterval(advance, tickMs());
-  }
-
   function advance() {
     if (i >= frames.length - 1) {
-      if (locked || parentDrive) {
-        setFrame(0);
-        return;
-      }
       clearInterval(timer);
       timer = null;
       setTimeout(() => {
         setFrame(0);
-        timer = setInterval(advance, tickMs());
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
       }, LOOP_HOLD_MS);
     } else {
       setFrame(i + 1);
     }
-  }
-
-  function installParentDriveHook() {
-    if (!parentDrive) return;
-    window.__mrwRadarAdvance = function () {
-      if (!autoplay || !frames.length) return false;
-      if (!ensureRadarLayer()) return false;
-      document.getElementById("play").textContent = "Pause";
-      advance();
-      return true;
-    };
-    window.addEventListener("message", (ev) => {
-      if (ev.origin !== window.location.origin) return;
-      const d = ev.data;
-      if (d !== "mrw-radar-tick" && (!d || d.type !== "mrw-radar-tick")) return;
-      window.__mrwRadarAdvance();
-    });
   }
 
   async function loadManifest() {
@@ -257,9 +192,6 @@
       i = frames.length ? frames.length - 1 : 0;
     } catch (e) {
       console.error("Failed to load manifest:", e);
-    }
-    if (!allFrames.length) {
-      window.setTimeout(() => loadManifest(), 3000);
     }
   }
 
@@ -317,7 +249,6 @@
   }
 
   map.on("load", async () => {
-    mapReady = true;
     map.resize();
     if (embedW > 0 && embedH > 0) {
       map.setCenter(CENTER);
@@ -333,7 +264,7 @@
       const z = map.getZoom();
       map.setMinZoom(z);
       map.setMaxZoom(z);
-      if (!parentDrive) map.once("idle", () => map.setMaxBounds(map.getBounds()));
+      map.once("idle", () => map.setMaxBounds(map.getBounds()));
     }
     map.addSource("home-location", {
       type: "geojson",
@@ -349,20 +280,22 @@
       }
     });
     if (frames.length) {
-      ensureRadarLayer();
+      map.addSource("radar", {
+        type: "image",
+        url: frameBase + frames[i] + "?v=" + Date.now(),
+        coordinates: coords
+      });
+      map.addLayer({
+        id: "radar-layer",
+        type: "raster",
+        source: "radar",
+        paint: { "raster-fade-duration": 0, "raster-opacity": 0.9 }
+      });
       setFrame(i);
-      installParentDriveHook();
-      startAutoplayTimer();
-    } else {
-      window.setTimeout(async () => {
-        await loadManifest();
-        if (frames.length) {
-          ensureRadarLayer();
-          setFrame(i);
-          installParentDriveHook();
-          startAutoplayTimer();
-        }
-      }, 3000);
+      if (autoplay && !timer) {
+        document.getElementById("play").textContent = "Pause";
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }
     }
     const alerts = await loadAlerts();
     addAlertLayers(alerts);
@@ -375,21 +308,6 @@
       const mf = await resp.json();
       const newAll = mf.frames || [];
       if (newAll.length === 0) return;
-      if (parentDrive) {
-        const curName = frames.length ? frames[i] : null;
-        allFrames = newAll;
-        frames = allFrames.slice(-frameLimit);
-        countEl.textContent = frames.length;
-        if (curName) {
-          const idx = frames.indexOf(curName);
-          i = idx >= 0 ? idx : Math.min(i, frames.length - 1);
-        } else {
-          i = Math.min(i, frames.length - 1);
-        }
-        ensureRadarLayer();
-        setFrame(i);
-        return;
-      }
       const ourLast = frames.length ? frames[frames.length - 1] : null;
       const hasNew = ourLast !== newAll[newAll.length - 1];
       const cur = frames[i];
@@ -423,21 +341,8 @@
   document.addEventListener("fullscreenchange", () => map.resize());
 
   speedValEl.textContent = speedEl.value;
-  setInterval(refreshManifest, locked ? POLL_MS_EMBED : POLL_MS);
-  if (!locked) setTimeout(refreshManifest, 2000);
-  if (locked && autoplay && !parentDrive) {
-    let lastStamp = "";
-    let lastChange = Date.now();
-    setInterval(() => {
-      const s = frameStampEl.textContent;
-      if (s && s !== lastStamp) { lastStamp = s; lastChange = Date.now(); return; }
-      if (frames.length <= 1 || !map.getSource("radar")) return;
-      if (Date.now() - lastChange < 10000) return;
-      lastChange = Date.now();
-      startAutoplayTimer();
-      setFrame((i + 1) % frames.length);
-    }, 2500);
-  }
+  setInterval(refreshManifest, POLL_MS);
+  setTimeout(refreshManifest, 2000);
   setInterval(async () => { const a = await loadAlerts(); if (a) addAlertLayers(a); }, 120000);
 })();
 </script>

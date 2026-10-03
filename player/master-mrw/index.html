@@ -300,18 +300,6 @@
       height: 100%;
       border: none;
     }
-    .radarTileVer {
-      position: absolute;
-      bottom: 8px;
-      left: 8px;
-      z-index: 5;
-      font-size: 20px;
-      font-weight: 700;
-      color: rgba(255, 255, 255, 0.75);
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-      pointer-events: none;
-      letter-spacing: 0.04em;
-    }
 
     /* Conditions tile */
     .condTile .condGrid { padding: var(--pad); display: grid; gap: 22px; }
@@ -572,20 +560,20 @@
             </svg>
           </div>
         </div>
-        <div class="tile middleBottomTile"></div>
+        <div class="tile middleBottomTile">
+          <div class="ph">Middle bottom — placeholder</div>
+        </div>
       </div>
 
       <!-- Right column -->
       <div class="tile radarTile" id="radarTile" style="grid-column:3; grid-row:1;">
-        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=14" title="KCLX Radar"></iframe>
-        <div class="radarTileVer" id="stateRadarVer">STATE r14</div>
+        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&v=5" title="KCLX Radar"></iframe>
       </div>
       <div class="tile radarTile regionTile" style="grid-column:3; grid-row:2;">
-        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=9" title="MRMS Eastern US"></iframe>
-        <div class="radarTileVer" id="regionRadarVer">REGION r14</div>
+        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&opacity=42&v=1" title="MRMS Eastern US"></iframe>
       </div>
     </main>
-    <div class="verBadge" aria-hidden="true" id="layoutVer">LOCKED r14</div>
+    <div class="verBadge" aria-hidden="true">LOCKED</div>
     <div class="verBadge" style="bottom: 32px; right: 7px;" id="sizeDebug"></div>
   </div>
 
@@ -599,45 +587,14 @@
     function setText(id, v) { const el = $(id); if (el && v != null) el.textContent = String(v); }
     function setNum(id, n) { const el = $(id); if (el) el.textContent = (n != null && Number.isFinite(n)) ? Math.round(n) : "--"; }
 
-    // Canonical radar embed URLs — rewrite on every dashboard load so kiosk cache cannot stick on one tile.
-    const MRW_RADAR_REV = "r14";
-    const MRW_RADAR_IFRAMES = {
-      radarIframe: "/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=14",
-      regionIframe: "/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=9"
-    };
-    (function syncRadarIframeSrc() {
-      for (const [id, path] of Object.entries(MRW_RADAR_IFRAMES)) {
-        const el = document.getElementById(id);
-        if (!el) continue;
-        const want = new URL(path, location.href);
-        const cur = new URL(el.getAttribute("src") || path, location.href);
-        const same = cur.pathname === want.pathname
-          && cur.searchParams.get("parentDrive") === want.searchParams.get("parentDrive")
-          && cur.searchParams.get("v") === want.searchParams.get("v");
-        if (!same) el.src = want.pathname + want.search;
-      }
-      window.setTimeout(() => {
-        for (const [id, path] of Object.entries(MRW_RADAR_IFRAMES)) {
-          const el = document.getElementById(id);
-          const w = el?.contentWindow;
-          if (!el || (w && typeof w.__mrwRadarAdvance === "function")) continue;
-          const want = new URL(path, location.href);
-          el.src = want.pathname + want.search;
-        }
-      }, 8000);
-    })();
-
-    // Layout diagnostics — ?layoutDebug=1 only (wall display stays clean)
-    const layoutDebug = new URLSearchParams(location.search).has("layoutDebug");
+    // Layout diagnostics — actual dimensions (source of truth)
     let dataOk = false;
     requestAnimationFrame(() => {
       const leftBoxes = document.querySelectorAll(".leftGrid .tile");
       const leftGrid = document.querySelector(".leftGrid");
       const radar = document.querySelector(".radarTile");
       const el = document.getElementById("sizeDebug");
-      if (!layoutDebug && el) el.style.display = "none";
       function updateDebug() {
-        if (!layoutDebug) return;
         let msg = "";
         if (leftGrid) {
           const lr = leftGrid.getBoundingClientRect();
@@ -662,58 +619,6 @@
       updateDebug();
       setInterval(updateDebug, 2000);
     });
-
-    // Drive radar loops from the parent (rAF + direct iframe hook — kiosk Chrome throttles iframe timers).
-    (function radarParentDrive() {
-      const RADAR_TICK_MS = 215;
-      const targets = ["radarIframe", "regionIframe"];
-      let lastTick = 0;
-      function pump(now) {
-        requestAnimationFrame(pump);
-        if (now - lastTick < RADAR_TICK_MS) return;
-        lastTick = now;
-        for (const id of targets) {
-          const w = document.getElementById(id)?.contentWindow;
-          if (!w) continue;
-          if (typeof w.__mrwRadarAdvance === "function") {
-            w.__mrwRadarAdvance();
-          } else if (w.__mrwRadarReady !== false) {
-            w.postMessage({ type: "mrw-radar-tick" }, location.origin);
-          }
-        }
-      }
-      requestAnimationFrame(pump);
-    })();
-
-    // Same-origin iframes: recover stalled radar loops (timer killed at loop end in throttled embeds).
-    (function radarIframeWatch() {
-      const targets = ["radarIframe", "regionIframe"];
-      const STALL_MS = 12000;
-      const state = Object.create(null);
-      setInterval(() => {
-        const now = Date.now();
-        for (const id of targets) {
-          const iframe = document.getElementById(id);
-          if (!iframe) continue;
-          let stamp = "";
-          try {
-            stamp = iframe.contentDocument?.getElementById("frameStamp")?.textContent?.trim() || "";
-          } catch (_) { continue; }
-          const rec = state[id] || { stamp: "", since: now };
-          if (stamp && stamp !== rec.stamp) {
-            state[id] = { stamp, since: now };
-            continue;
-          }
-          if (!stamp || now - rec.since < STALL_MS) continue;
-          rec.since = now;
-          state[id] = rec;
-          try {
-            const spec = MRW_RADAR_IFRAMES[id];
-            iframe.src = spec ? new URL(spec, location.href).pathname + new URL(spec, location.href).search : iframe.src;
-          } catch (_) {}
-        }
-      }, 4000);
-    })();
 
     async function fetchJSON(url) {
       const r = await fetch(url, { cache: "no-store", credentials: "omit" });
@@ -782,27 +687,14 @@
         const dir = Number(w.dir_deg ?? w.wind_dir_deg);
         const speed = Number(w.speed_mph ?? w.wind_speed_mph);
         setNum("w_speed_txt", speed);
-        const dirReliable = w.dir_reliable !== false;
-        const dirProxy = w.dir_proxy_active === true;
-        const dirSuffix = dirProxy ? " °" : (dirReliable ? "°" : "° ?");
-        setText("w_dir_txt", Number.isFinite(dir) ? Math.round(dir) + dirSuffix : "--");
+        setText("w_dir_txt", Number.isFinite(dir) ? Math.round(dir) + "°" : "--");
         setNum("w_avg10", w.avg_10m_mph ?? w.avg10_mph);
         setNum("w_gust", w.gust_mph ?? w.wind_gust_mph);
         setNum("w_max10", w.max_gust_10m_mph ?? w.max10_mph);
         const maxDay = w.max_day_mph ?? w.max_gust_day_mph;
         if (maxDay != null && Number.isFinite(maxDay)) setText("w_maxday", Math.round(maxDay));
         const needle = $("w_needle");
-        if (needle && Number.isFinite(dir)) {
-          needle.setAttribute("transform", "rotate(" + dir + " 180 180)");
-          needle.setAttribute("opacity", (dirReliable || dirProxy) ? "1" : "0.45");
-        }
-        const dirTxt = $("w_dir_txt");
-        if (dirTxt) {
-          const title = dirProxy
-            ? (w.dir_fault_note || "Direction from nearby NWS (~5 min); speed/gust local.")
-            : (dirReliable ? "" : (w.dir_fault_note || "Wind direction unreliable — vane may be stuck"));
-          dirTxt.setAttribute("title", title);
-        }
+        if (needle && Number.isFinite(dir)) needle.setAttribute("transform", "rotate(" + dir + " 180 180)");
         const dAvg = Number(w.avg_10m_dir_deg ?? w.avg10_dir_deg ?? dir);
         const dGust = Number(w.gust_dir_deg ?? w.wind_gust_dir ?? dir);
         const dMax10 = Number(w.max_gust_10m_dir_deg ?? w.max10_dir_deg ?? dir);
@@ -936,7 +828,6 @@
       setTimeout(condPoll, 5000);
     })();
   </script>
-  <script src="/player/master-mrw/modules/temp-detail.js?v=1"></script>
-  <script src="/player/master-mrw/modules/mrw-alerts.js?v=20260707xwx"></script>
+  <script src="/player/master-mrw/modules/mrw-alerts.js?v=20260409rip"></script>
 </body>
 </html>
