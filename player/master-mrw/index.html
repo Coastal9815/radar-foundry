@@ -565,10 +565,10 @@
 
       <!-- Right column -->
       <div class="tile radarTile" id="radarTile" style="grid-column:3; grid-row:1;">
-        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&speed=215&v=10" title="KCLX Radar"></iframe>
+        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=11" title="KCLX Radar"></iframe>
       </div>
       <div class="tile radarTile regionTile" style="grid-column:3; grid-row:2;">
-        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&speed=215&opacity=42&v=6" title="MRMS Eastern US"></iframe>
+        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=7" title="MRMS Eastern US"></iframe>
       </div>
     </main>
     <div class="verBadge" aria-hidden="true">LOCKED</div>
@@ -620,6 +620,19 @@
       updateDebug();
       setInterval(updateDebug, 2000);
     });
+
+    // Drive radar loops from the parent — iframe setInterval is heavily throttled on kiosk Chrome.
+    (function radarParentDrive() {
+      const RADAR_TICK_MS = 215;
+      const targets = ["radarIframe", "regionIframe"];
+      function tick() {
+        for (const id of targets) {
+          const w = document.getElementById(id)?.contentWindow;
+          if (w) w.postMessage({ type: "mrw-radar-tick" }, location.origin);
+        }
+      }
+      window.addEventListener("load", () => setInterval(tick, RADAR_TICK_MS));
+    })();
 
     // Same-origin iframes: recover stalled radar loops (timer killed at loop end in throttled embeds).
     (function radarIframeWatch() {

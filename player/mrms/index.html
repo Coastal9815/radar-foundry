@@ -112,6 +112,7 @@
   const regionParam = params.get("region") || "eastern_us";
   const autoplay = params.has("autoplay") || params.has("play");
   const locked = params.has("locked") || params.has("embed");
+  const parentDrive = params.has("parentDrive") || params.get("parentDrive") === "1";
   if (locked) document.body.classList.add("embed-locked");
   const defaultSpeed = Math.max(50, Math.min(500, parseInt(params.get("speed") || "215", 10)));
   const POLL_MS = 15000;
@@ -212,9 +213,20 @@
   }
 
   const LOOP_HOLD_MS = 1000;
+
+  function tickMs() {
+    return Number(speedEl.value) || defaultSpeed;
+  }
+
+  function startAutoplayTimer() {
+    if (!autoplay || timer || parentDrive || !frames.length) return;
+    document.getElementById("play").textContent = "Pause";
+    timer = setInterval(advance, tickMs());
+  }
+
   function advance() {
     if (i >= frames.length - 1) {
-      if (locked) {
+      if (locked || parentDrive) {
         setFrame(0);
         return;
       }
@@ -222,12 +234,22 @@
       timer = null;
       setTimeout(() => {
         setFrame(0);
-        timer = setInterval(advance, Number(document.getElementById("speed").value));
+        timer = setInterval(advance, tickMs());
       }, LOOP_HOLD_MS);
     } else {
       setFrame(i + 1);
     }
   }
+
+  window.addEventListener("message", (ev) => {
+    if (ev.origin !== window.location.origin) return;
+    const d = ev.data;
+    if (d !== "mrw-radar-tick" && (!d || d.type !== "mrw-radar-tick")) return;
+    if (!parentDrive || !autoplay || !frames.length) return;
+    if (!map.getSource("mrms")) return;
+    if (parentDrive) document.getElementById("play").textContent = "Pause";
+    advance();
+  });
 
   async function loadManifestForRegion(rid) {
     const urls = urlsForRegion(rid);
@@ -353,10 +375,7 @@
         paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 }
       });
       setFrame(i);
-      if (autoplay && !timer) {
-        document.getElementById("play").textContent = "Pause";
-        timer = setInterval(advance, Number(document.getElementById("speed").value));
-      }
+      startAutoplayTimer();
     }
     try {
       const alerts = await loadAlerts();
@@ -424,7 +443,7 @@
   document.getElementById("speedVal").textContent = document.getElementById("speed").value;
   setInterval(refreshManifest, locked ? POLL_MS_EMBED : POLL_MS);
   if (!locked) setTimeout(refreshManifest, 2000);
-  if (locked && autoplay) {
+  if (locked && autoplay && !parentDrive) {
     let lastStamp = "";
     let lastChange = Date.now();
     setInterval(() => {
@@ -433,10 +452,7 @@
       if (frames.length <= 1 || !map.getSource("mrms")) return;
       if (Date.now() - lastChange < 10000) return;
       lastChange = Date.now();
-      if (!timer) {
-        document.getElementById("play").textContent = "Pause";
-        timer = setInterval(advance, Number(document.getElementById("speed").value));
-      }
+      startAutoplayTimer();
       setFrame((i + 1) % frames.length);
     }, 2500);
   }

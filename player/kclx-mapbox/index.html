@@ -116,6 +116,7 @@
   if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 72;
   const autoplay = params.has("autoplay") || params.has("play");
   const locked = params.has("locked") || params.has("embed");
+  const parentDrive = params.has("parentDrive") || params.get("parentDrive") === "1";
   if (locked) document.body.classList.add("embed-locked");
   const defaultSpeed = Math.max(50, Math.min(500, parseInt(params.get("speed") || "215", 10)));
   const POLL_MS = 15000;
@@ -158,10 +159,19 @@
 
   const LOOP_HOLD_MS = 1000;
 
+  function tickMs() {
+    return Number(speedEl.value) || defaultSpeed;
+  }
+
+  function startAutoplayTimer() {
+    if (!autoplay || timer || parentDrive || !frames.length) return;
+    document.getElementById("play").textContent = "Pause";
+    timer = setInterval(advance, tickMs());
+  }
+
   function advance() {
     if (i >= frames.length - 1) {
-      // Dashboard iframes: never drop the interval (Chrome can throttle setTimeout → permanent freeze).
-      if (locked) {
+      if (locked || parentDrive) {
         setFrame(0);
         return;
       }
@@ -169,12 +179,23 @@
       timer = null;
       setTimeout(() => {
         setFrame(0);
-        timer = setInterval(advance, Number(document.getElementById("speed").value));
+        timer = setInterval(advance, tickMs());
       }, LOOP_HOLD_MS);
     } else {
       setFrame(i + 1);
     }
   }
+
+  window.addEventListener("message", (ev) => {
+    if (ev.origin !== window.location.origin) return;
+    const d = ev.data;
+    if (d !== "mrw-radar-tick" && (!d || d.type !== "mrw-radar-tick")) return;
+    if (!parentDrive || !autoplay || !frames.length) return;
+    const src = map.getSource("radar");
+    if (!src) return;
+    if (parentDrive) document.getElementById("play").textContent = "Pause";
+    advance();
+  });
 
   async function loadManifest() {
     const tryFetch = async (base) => {
@@ -300,10 +321,7 @@
         paint: { "raster-fade-duration": 0, "raster-opacity": 0.9 }
       });
       setFrame(i);
-      if (autoplay && !timer) {
-        document.getElementById("play").textContent = "Pause";
-        timer = setInterval(advance, Number(document.getElementById("speed").value));
-      }
+      startAutoplayTimer();
     }
     const alerts = await loadAlerts();
     addAlertLayers(alerts);
@@ -351,7 +369,7 @@
   speedValEl.textContent = speedEl.value;
   setInterval(refreshManifest, locked ? POLL_MS_EMBED : POLL_MS);
   if (!locked) setTimeout(refreshManifest, 2000);
-  if (locked && autoplay) {
+  if (locked && autoplay && !parentDrive) {
     let lastStamp = "";
     let lastChange = Date.now();
     setInterval(() => {
@@ -360,10 +378,7 @@
       if (frames.length <= 1 || !map.getSource("radar")) return;
       if (Date.now() - lastChange < 10000) return;
       lastChange = Date.now();
-      if (!timer) {
-        document.getElementById("play").textContent = "Pause";
-        timer = setInterval(advance, Number(document.getElementById("speed").value));
-      }
+      startAutoplayTimer();
       setFrame((i + 1) % frames.length);
     }, 2500);
   }
