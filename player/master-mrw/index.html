@@ -300,6 +300,18 @@
       height: 100%;
       border: none;
     }
+    .radarTileVer {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      z-index: 5;
+      font-size: 20px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.75);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+      pointer-events: none;
+      letter-spacing: 0.04em;
+    }
 
     /* Conditions tile */
     .condTile .condGrid { padding: var(--pad); display: grid; gap: 22px; }
@@ -565,13 +577,15 @@
 
       <!-- Right column -->
       <div class="tile radarTile" id="radarTile" style="grid-column:3; grid-row:1;">
-        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=12" title="KCLX Radar"></iframe>
+        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=13" title="KCLX Radar"></iframe>
+        <div class="radarTileVer" id="stateRadarVer">STATE r13</div>
       </div>
       <div class="tile radarTile regionTile" style="grid-column:3; grid-row:2;">
-        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=8" title="MRMS Eastern US"></iframe>
+        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=9" title="MRMS Eastern US"></iframe>
+        <div class="radarTileVer" id="regionRadarVer">REGION r13</div>
       </div>
     </main>
-    <div class="verBadge" aria-hidden="true" id="layoutVer">LOCKED r12</div>
+    <div class="verBadge" aria-hidden="true" id="layoutVer">LOCKED r13</div>
     <div class="verBadge" style="bottom: 32px; right: 7px;" id="sizeDebug"></div>
   </div>
 
@@ -584,6 +598,34 @@
     function $(id) { return document.getElementById(id); }
     function setText(id, v) { const el = $(id); if (el && v != null) el.textContent = String(v); }
     function setNum(id, n) { const el = $(id); if (el) el.textContent = (n != null && Number.isFinite(n)) ? Math.round(n) : "--"; }
+
+    // Canonical radar embed URLs — rewrite on every dashboard load so kiosk cache cannot stick on one tile.
+    const MRW_RADAR_REV = "r13";
+    const MRW_RADAR_IFRAMES = {
+      radarIframe: "/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=13",
+      regionIframe: "/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=9"
+    };
+    (function syncRadarIframeSrc() {
+      for (const [id, path] of Object.entries(MRW_RADAR_IFRAMES)) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        const want = new URL(path, location.href);
+        const cur = new URL(el.getAttribute("src") || path, location.href);
+        const same = cur.pathname === want.pathname
+          && cur.searchParams.get("parentDrive") === want.searchParams.get("parentDrive")
+          && cur.searchParams.get("v") === want.searchParams.get("v");
+        if (!same) el.src = want.pathname + want.search;
+      }
+      window.setTimeout(() => {
+        for (const [id, path] of Object.entries(MRW_RADAR_IFRAMES)) {
+          const el = document.getElementById(id);
+          const w = el?.contentWindow;
+          if (!el || (w && typeof w.__mrwRadarAdvance === "function")) continue;
+          const want = new URL(path, location.href);
+          el.src = want.pathname + want.search;
+        }
+      }, 8000);
+    })();
 
     // Layout diagnostics — ?layoutDebug=1 only (wall display stays clean)
     const layoutDebug = new URLSearchParams(location.search).has("layoutDebug");
@@ -666,9 +708,8 @@
           rec.since = now;
           state[id] = rec;
           try {
-            const u = new URL(iframe.src, location.href);
-            u.searchParams.set("v", String(now));
-            iframe.src = u.toString();
+            const spec = MRW_RADAR_IFRAMES[id];
+            iframe.src = spec ? new URL(spec, location.href).pathname + new URL(spec, location.href).search : iframe.src;
           } catch (_) {}
         }
       }, 4000);
