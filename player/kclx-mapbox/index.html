@@ -160,6 +160,11 @@
 
   function advance() {
     if (i >= frames.length - 1) {
+      // Dashboard iframes: never drop the interval (Chrome can throttle setTimeout → permanent freeze).
+      if (locked) {
+        setFrame(0);
+        return;
+      }
       clearInterval(timer);
       timer = null;
       setTimeout(() => {

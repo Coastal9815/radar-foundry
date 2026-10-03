@@ -214,6 +214,10 @@
   const LOOP_HOLD_MS = 1000;
   function advance() {
     if (i >= frames.length - 1) {
+      if (locked) {
+        setFrame(0);
+        return;
+      }
       clearInterval(timer);
       timer = null;
       setTimeout(() => {

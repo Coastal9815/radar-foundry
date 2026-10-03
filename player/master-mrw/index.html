@@ -565,10 +565,10 @@
 
       <!-- Right column -->
       <div class="tile radarTile" id="radarTile" style="grid-column:3; grid-row:1;">
-        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&speed=215&v=9" title="KCLX Radar"></iframe>
+        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&speed=215&v=10" title="KCLX Radar"></iframe>
       </div>
       <div class="tile radarTile regionTile" style="grid-column:3; grid-row:2;">
-        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&speed=215&opacity=42&v=5" title="MRMS Eastern US"></iframe>
+        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&speed=215&opacity=42&v=6" title="MRMS Eastern US"></iframe>
       </div>
     </main>
     <div class="verBadge" aria-hidden="true">LOCKED</div>
@@ -620,6 +620,37 @@
       updateDebug();
       setInterval(updateDebug, 2000);
     });
+
+    // Same-origin iframes: recover stalled radar loops (timer killed at loop end in throttled embeds).
+    (function radarIframeWatch() {
+      const targets = ["radarIframe", "regionIframe"];
+      const STALL_MS = 12000;
+      const state = Object.create(null);
+      setInterval(() => {
+        const now = Date.now();
+        for (const id of targets) {
+          const iframe = document.getElementById(id);
+          if (!iframe) continue;
+          let stamp = "";
+          try {
+            stamp = iframe.contentDocument?.getElementById("frameStamp")?.textContent?.trim() || "";
+          } catch (_) { continue; }
+          const rec = state[id] || { stamp: "", since: now };
+          if (stamp && stamp !== rec.stamp) {
+            state[id] = { stamp, since: now };
+            continue;
+          }
+          if (!stamp || now - rec.since < STALL_MS) continue;
+          rec.since = now;
+          state[id] = rec;
+          try {
+            const u = new URL(iframe.src, location.href);
+            u.searchParams.set("v", String(now));
+            iframe.src = u.toString();
+          } catch (_) {}
+        }
+      }, 4000);
+    })();
 
     async function fetchJSON(url) {
       const r = await fetch(url, { cache: "no-store", credentials: "omit" });
