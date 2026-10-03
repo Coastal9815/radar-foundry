@@ -186,11 +186,26 @@
     if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); }
   };
 
+  const warmed = new Set();
+  function frameUrl(name) {
+    return frameBase + name + "?v=" + encodeURIComponent(name);
+  }
+  function warm(name) {
+    if (!name || warmed.has(name)) return Promise.resolve();
+    return new Promise((resolve) => {
+      const img = new Image();
+      const done = () => { warmed.add(name); resolve(); };
+      img.onload = done;
+      img.onerror = done;
+      img.src = frameUrl(name);
+    });
+  }
+
   function setFrame(n) {
     if (!frames.length) return;
     i = Math.max(0, Math.min(n, frames.length - 1));
     const name = frames[i];
-    const url = frameBase + name + "?v=" + Date.now();
+    const url = frameUrl(name);
     idxEl.textContent = i + 1;
     countEl.textContent = frames.length;
     const ts = name.replace(".png", "");
@@ -258,14 +273,14 @@
     map.flyTo({ center: r.center, zoom: r.zoom, bearing: r.bearing || 0, pitch: r.pitch || 0, duration: 500 });
     const src = map.getSource("mrms");
     if (src && frames.length) {
-      src.updateImage({ url: frameBase + frames[i] + "?v=" + Date.now(), coordinates: overlayCoords });
+      src.updateImage({ url: frameUrl(frames[i]), coordinates: overlayCoords });
     } else if (map.getLayer("mrms-layer")) {
       map.removeLayer("mrms-layer");
       map.removeSource("mrms");
     }
     if (frames.length && overlayCoords) {
       if (!map.getSource("mrms")) {
-        map.addSource("mrms", { type: "image", url: frameBase + frames[i] + "?v=" + Date.now(), coordinates: overlayCoords });
+        map.addSource("mrms", { type: "image", url: frameUrl(frames[i]), coordinates: overlayCoords });
         map.addLayer({ id: "mrms-layer", type: "raster", source: "mrms", paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 } });
       }
       setFrame(i);
@@ -315,9 +330,10 @@
     if (titleEl) titleEl.textContent = ok ? "MRMS Composite Reflectivity" : "MRMS — No frames (tap Refresh)";
     if (!ok) { countEl.textContent = "0"; idxEl.textContent = "0"; }
     if (frames.length && overlayCoords) {
+      await Promise.all(frames.map(warm));
       map.addSource("mrms", {
         type: "image",
-        url: frameBase + frames[i] + "?v=" + Date.now(),
+        url: frameUrl(frames[i]),
         coordinates: overlayCoords
       });
       map.addLayer({
@@ -356,7 +372,7 @@
       frames = allFrames.slice(-frameLimit);
       countEl.textContent = frames.length;
       if (!map.getSource("mrms") && frames.length && overlayCoords) {
-        map.addSource("mrms", { type: "image", url: frameBase + frames[frames.length - 1] + "?v=" + Date.now(), coordinates: overlayCoords });
+        map.addSource("mrms", { type: "image", url: frameUrl(frames[frames.length - 1]), coordinates: overlayCoords });
         map.addLayer({ id: "mrms-layer", type: "raster", source: "mrms", paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 } });
         i = frames.length - 1;
         setFrame(i);

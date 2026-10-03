@@ -111,9 +111,7 @@
   const FRAME_LIMIT_KEY = "mrw_frame_limit_kclx_mapbox";
   const FRAME_LIMIT_OPTS = [6, 12, 24, 36, 48, 72];
   let allFrames = [], frames = [], i = 0, timer = null;
-  let imageBusy = false;
-  let imageBusyTimer = null;
-  let paintedUrl = "";
+  const warmed = new Set();
   let frameLimit = parseInt(params.get("frameLimit") || localStorage.getItem(FRAME_LIMIT_KEY) || "72", 10);
   if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 72;
   const autoplay = params.has("autoplay") || params.has("play");
@@ -141,21 +139,26 @@
     if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); }
   };
 
-  function markImageBusy() {
-    imageBusy = true;
-    clearTimeout(imageBusyTimer);
-    imageBusyTimer = setTimeout(() => { imageBusy = false; }, 2500);
+  function frameUrl(name) {
+    return frameBase + name + "?v=" + encodeURIComponent(name);
   }
 
-  function radarUrl(name) {
-    return frameBase + name + "?v=" + encodeURIComponent(name);
+  function warm(name) {
+    if (!name || warmed.has(name)) return Promise.resolve();
+    return new Promise((resolve) => {
+      const img = new Image();
+      const done = () => { warmed.add(name); resolve(); };
+      img.onload = done;
+      img.onerror = done;
+      img.src = frameUrl(name);
+    });
   }
 
   function setFrame(n) {
     if (!frames.length) return;
     i = Math.max(0, Math.min(n, frames.length - 1));
     const name = frames[i];
-    const url = radarUrl(name);
+    const url = frameUrl(name);
     idxEl.textContent = i + 1;
     countEl.textContent = frames.length;
     const ts = name.replace(".png", "");
@@ -163,16 +166,12 @@
     tsEl.textContent = timeStr;
     frameStampEl.textContent = timeStr;
     const src = map.getSource("radar");
-    if (!src || url === paintedUrl) return;
-    paintedUrl = url;
-    markImageBusy();
-    src.updateImage({ url: url });
+    if (src) src.updateImage({ url: url });
   }
 
   const LOOP_HOLD_MS = 1000;
 
   function advance() {
-    if (imageBusy) return;
     if (i >= frames.length - 1) {
       clearInterval(timer);
       timer = null;
@@ -265,13 +264,6 @@
     } else { map.getSource("alerts-sws").setData(sws); }
   }
 
-  map.on("sourcedata", (ev) => {
-    if (ev.sourceId === "radar" && ev.isSourceLoaded) {
-      imageBusy = false;
-      clearTimeout(imageBusyTimer);
-    }
-  });
-
   map.on("load", async () => {
     map.resize();
     if (embedW > 0 && embedH > 0) {
@@ -304,12 +296,10 @@
       }
     });
     if (frames.length) {
-      const firstUrl = radarUrl(frames[i]);
-      paintedUrl = firstUrl;
-      markImageBusy();
+      await Promise.all(frames.map(warm));
       map.addSource("radar", {
         type: "image",
-        url: firstUrl,
+        url: frameUrl(frames[i]),
         coordinates: coords
       });
       map.addLayer({
