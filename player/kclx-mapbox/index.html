@@ -112,6 +112,8 @@
   const FRAME_LIMIT_KEY = "mrw_frame_limit_kclx_mapbox";
   const FRAME_LIMIT_OPTS = [6, 12, 24, 36, 48, 72];
   let allFrames = [], frames = [], i = 0, timer = null;
+  let mapReady = false;
+  window.__mrwRadarReady = false;
   let frameLimit = parseInt(params.get("frameLimit") || localStorage.getItem(FRAME_LIMIT_KEY) || "72", 10);
   if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 72;
   const autoplay = params.has("autoplay") || params.has("play");
@@ -142,6 +144,31 @@
     if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); }
   };
 
+  function ensureRadarLayer() {
+    if (!mapReady || !frames.length) return false;
+    try {
+      if (!map.getSource("radar")) {
+        map.addSource("radar", {
+          type: "image",
+          url: frameBase + frames[i] + "?v=" + frames[i],
+          coordinates: coords
+        });
+        map.addLayer({
+          id: "radar-layer",
+          type: "raster",
+          source: "radar",
+          paint: { "raster-fade-duration": 0, "raster-opacity": 0.9 }
+        });
+      }
+      window.__mrwRadarReady = true;
+      return true;
+    } catch (e) {
+      console.error("ensureRadarLayer:", e);
+      window.__mrwRadarReady = false;
+      return false;
+    }
+  }
+
   function setFrame(n) {
     if (!frames.length) return;
     i = Math.max(0, Math.min(n, frames.length - 1));
@@ -153,6 +180,8 @@
     const timeStr = new Date(Date.UTC(parseInt(ts.slice(0,4)), parseInt(ts.slice(4,6))-1, parseInt(ts.slice(6,8)), parseInt(ts.slice(9,11)), parseInt(ts.slice(11,13)))).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",hour12:true});
     tsEl.textContent = timeStr;
     frameStampEl.textContent = timeStr;
+    if (!mapReady) return;
+    if (!map.getSource("radar") && !ensureRadarLayer()) return;
     const src = map.getSource("radar");
     if (src) src.updateImage({ url: url });
   }
@@ -190,7 +219,7 @@
     if (!parentDrive) return;
     window.__mrwRadarAdvance = function () {
       if (!autoplay || !frames.length) return false;
-      if (!map.getSource("radar")) return false;
+      if (!ensureRadarLayer()) return false;
       document.getElementById("play").textContent = "Pause";
       advance();
       return true;
@@ -227,6 +256,9 @@
       i = frames.length ? frames.length - 1 : 0;
     } catch (e) {
       console.error("Failed to load manifest:", e);
+    }
+    if (!allFrames.length) {
+      window.setTimeout(() => loadManifest(), 3000);
     }
   }
 
@@ -284,6 +316,7 @@
   }
 
   map.on("load", async () => {
+    mapReady = true;
     map.resize();
     if (embedW > 0 && embedH > 0) {
       map.setCenter(CENTER);
@@ -299,7 +332,7 @@
       const z = map.getZoom();
       map.setMinZoom(z);
       map.setMaxZoom(z);
-      map.once("idle", () => map.setMaxBounds(map.getBounds()));
+      if (!parentDrive) map.once("idle", () => map.setMaxBounds(map.getBounds()));
     }
     map.addSource("home-location", {
       type: "geojson",
@@ -315,20 +348,20 @@
       }
     });
     if (frames.length) {
-      map.addSource("radar", {
-        type: "image",
-        url: frameBase + frames[i] + "?v=" + Date.now(),
-        coordinates: coords
-      });
-      map.addLayer({
-        id: "radar-layer",
-        type: "raster",
-        source: "radar",
-        paint: { "raster-fade-duration": 0, "raster-opacity": 0.9 }
-      });
+      ensureRadarLayer();
       setFrame(i);
       installParentDriveHook();
       startAutoplayTimer();
+    } else {
+      window.setTimeout(async () => {
+        await loadManifest();
+        if (frames.length) {
+          ensureRadarLayer();
+          setFrame(i);
+          installParentDriveHook();
+          startAutoplayTimer();
+        }
+      }, 3000);
     }
     const alerts = await loadAlerts();
     addAlertLayers(alerts);
@@ -352,6 +385,8 @@
         } else {
           i = Math.min(i, frames.length - 1);
         }
+        ensureRadarLayer();
+        setFrame(i);
         return;
       }
       const ourLast = frames.length ? frames[frames.length - 1] : null;

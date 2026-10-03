@@ -577,15 +577,15 @@
 
       <!-- Right column -->
       <div class="tile radarTile" id="radarTile" style="grid-column:3; grid-row:1;">
-        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=13" title="KCLX Radar"></iframe>
-        <div class="radarTileVer" id="stateRadarVer">STATE r13</div>
+        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=14" title="KCLX Radar"></iframe>
+        <div class="radarTileVer" id="stateRadarVer">STATE r14</div>
       </div>
       <div class="tile radarTile regionTile" style="grid-column:3; grid-row:2;">
         <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=9" title="MRMS Eastern US"></iframe>
-        <div class="radarTileVer" id="regionRadarVer">REGION r13</div>
+        <div class="radarTileVer" id="regionRadarVer">REGION r14</div>
       </div>
     </main>
-    <div class="verBadge" aria-hidden="true" id="layoutVer">LOCKED r13</div>
+    <div class="verBadge" aria-hidden="true" id="layoutVer">LOCKED r14</div>
     <div class="verBadge" style="bottom: 32px; right: 7px;" id="sizeDebug"></div>
   </div>
 
@@ -600,9 +600,9 @@
     function setNum(id, n) { const el = $(id); if (el) el.textContent = (n != null && Number.isFinite(n)) ? Math.round(n) : "--"; }
 
     // Canonical radar embed URLs — rewrite on every dashboard load so kiosk cache cannot stick on one tile.
-    const MRW_RADAR_REV = "r13";
+    const MRW_RADAR_REV = "r14";
     const MRW_RADAR_IFRAMES = {
-      radarIframe: "/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=13",
+      radarIframe: "/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=14",
       regionIframe: "/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=9"
     };
     (function syncRadarIframeSrc() {
@@ -677,7 +677,7 @@
           if (!w) continue;
           if (typeof w.__mrwRadarAdvance === "function") {
             w.__mrwRadarAdvance();
-          } else {
+          } else if (w.__mrwRadarReady !== false) {
             w.postMessage({ type: "mrw-radar-tick" }, location.origin);
           }
         }
