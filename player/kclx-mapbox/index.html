@@ -186,16 +186,22 @@
     }
   }
 
-  window.addEventListener("message", (ev) => {
-    if (ev.origin !== window.location.origin) return;
-    const d = ev.data;
-    if (d !== "mrw-radar-tick" && (!d || d.type !== "mrw-radar-tick")) return;
-    if (!parentDrive || !autoplay || !frames.length) return;
-    const src = map.getSource("radar");
-    if (!src) return;
-    if (parentDrive) document.getElementById("play").textContent = "Pause";
-    advance();
-  });
+  function installParentDriveHook() {
+    if (!parentDrive) return;
+    window.__mrwRadarAdvance = function () {
+      if (!autoplay || !frames.length) return false;
+      if (!map.getSource("radar")) return false;
+      document.getElementById("play").textContent = "Pause";
+      advance();
+      return true;
+    };
+    window.addEventListener("message", (ev) => {
+      if (ev.origin !== window.location.origin) return;
+      const d = ev.data;
+      if (d !== "mrw-radar-tick" && (!d || d.type !== "mrw-radar-tick")) return;
+      window.__mrwRadarAdvance();
+    });
+  }
 
   async function loadManifest() {
     const tryFetch = async (base) => {
@@ -321,6 +327,7 @@
         paint: { "raster-fade-duration": 0, "raster-opacity": 0.9 }
       });
       setFrame(i);
+      installParentDriveHook();
       startAutoplayTimer();
     }
     const alerts = await loadAlerts();
@@ -334,6 +341,19 @@
       const mf = await resp.json();
       const newAll = mf.frames || [];
       if (newAll.length === 0) return;
+      if (parentDrive) {
+        const curName = frames.length ? frames[i] : null;
+        allFrames = newAll;
+        frames = allFrames.slice(-frameLimit);
+        countEl.textContent = frames.length;
+        if (curName) {
+          const idx = frames.indexOf(curName);
+          i = idx >= 0 ? idx : Math.min(i, frames.length - 1);
+        } else {
+          i = Math.min(i, frames.length - 1);
+        }
+        return;
+      }
       const ourLast = frames.length ? frames[frames.length - 1] : null;
       const hasNew = ourLast !== newAll[newAll.length - 1];
       const cur = frames[i];

@@ -565,13 +565,13 @@
 
       <!-- Right column -->
       <div class="tile radarTile" id="radarTile" style="grid-column:3; grid-row:1;">
-        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=11" title="KCLX Radar"></iframe>
+        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&v=12" title="KCLX Radar"></iframe>
       </div>
       <div class="tile radarTile regionTile" style="grid-column:3; grid-row:2;">
-        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=7" title="MRMS Eastern US"></iframe>
+        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&parentDrive=1&speed=215&opacity=42&v=8" title="MRMS Eastern US"></iframe>
       </div>
     </main>
-    <div class="verBadge" aria-hidden="true">LOCKED</div>
+    <div class="verBadge" aria-hidden="true" id="layoutVer">LOCKED r12</div>
     <div class="verBadge" style="bottom: 32px; right: 7px;" id="sizeDebug"></div>
   </div>
 
@@ -621,17 +621,26 @@
       setInterval(updateDebug, 2000);
     });
 
-    // Drive radar loops from the parent — iframe setInterval is heavily throttled on kiosk Chrome.
+    // Drive radar loops from the parent (rAF + direct iframe hook — kiosk Chrome throttles iframe timers).
     (function radarParentDrive() {
       const RADAR_TICK_MS = 215;
       const targets = ["radarIframe", "regionIframe"];
-      function tick() {
+      let lastTick = 0;
+      function pump(now) {
+        requestAnimationFrame(pump);
+        if (now - lastTick < RADAR_TICK_MS) return;
+        lastTick = now;
         for (const id of targets) {
           const w = document.getElementById(id)?.contentWindow;
-          if (w) w.postMessage({ type: "mrw-radar-tick" }, location.origin);
+          if (!w) continue;
+          if (typeof w.__mrwRadarAdvance === "function") {
+            w.__mrwRadarAdvance();
+          } else {
+            w.postMessage({ type: "mrw-radar-tick" }, location.origin);
+          }
         }
       }
-      window.addEventListener("load", () => setInterval(tick, RADAR_TICK_MS));
+      requestAnimationFrame(pump);
     })();
 
     // Same-origin iframes: recover stalled radar loops (timer killed at loop end in throttled embeds).
