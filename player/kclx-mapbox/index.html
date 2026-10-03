@@ -111,6 +111,9 @@
   const FRAME_LIMIT_KEY = "mrw_frame_limit_kclx_mapbox";
   const FRAME_LIMIT_OPTS = [6, 12, 24, 36, 48, 72];
   let allFrames = [], frames = [], i = 0, timer = null;
+  let imageBusy = false;
+  let imageBusyTimer = null;
+  let paintedUrl = "";
   let frameLimit = parseInt(params.get("frameLimit") || localStorage.getItem(FRAME_LIMIT_KEY) || "72", 10);
   if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 72;
   const autoplay = params.has("autoplay") || params.has("play");
@@ -138,11 +141,21 @@
     if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); }
   };
 
+  function markImageBusy() {
+    imageBusy = true;
+    clearTimeout(imageBusyTimer);
+    imageBusyTimer = setTimeout(() => { imageBusy = false; }, 2500);
+  }
+
+  function radarUrl(name) {
+    return frameBase + name + "?v=" + encodeURIComponent(name);
+  }
+
   function setFrame(n) {
     if (!frames.length) return;
     i = Math.max(0, Math.min(n, frames.length - 1));
     const name = frames[i];
-    const url = frameBase + name + "?v=" + Date.now();
+    const url = radarUrl(name);
     idxEl.textContent = i + 1;
     countEl.textContent = frames.length;
     const ts = name.replace(".png", "");
@@ -150,12 +163,16 @@
     tsEl.textContent = timeStr;
     frameStampEl.textContent = timeStr;
     const src = map.getSource("radar");
-    if (src) src.updateImage({ url: url });
+    if (!src || url === paintedUrl) return;
+    paintedUrl = url;
+    markImageBusy();
+    src.updateImage({ url: url });
   }
 
   const LOOP_HOLD_MS = 1000;
 
   function advance() {
+    if (imageBusy) return;
     if (i >= frames.length - 1) {
       clearInterval(timer);
       timer = null;
@@ -248,6 +265,13 @@
     } else { map.getSource("alerts-sws").setData(sws); }
   }
 
+  map.on("sourcedata", (ev) => {
+    if (ev.sourceId === "radar" && ev.isSourceLoaded) {
+      imageBusy = false;
+      clearTimeout(imageBusyTimer);
+    }
+  });
+
   map.on("load", async () => {
     map.resize();
     if (embedW > 0 && embedH > 0) {
@@ -280,9 +304,12 @@
       }
     });
     if (frames.length) {
+      const firstUrl = radarUrl(frames[i]);
+      paintedUrl = firstUrl;
+      markImageBusy();
       map.addSource("radar", {
         type: "image",
-        url: frameBase + frames[i] + "?v=" + Date.now(),
+        url: firstUrl,
         coordinates: coords
       });
       map.addLayer({
