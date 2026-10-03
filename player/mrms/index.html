@@ -38,6 +38,7 @@
       border-radius:6px; pointer-events:none;
     }
     body.embed-locked .top { display: none !important; }
+    body.embed-locked .regions { display: none !important; }
   </style>
 </head>
 <body>
@@ -104,9 +105,6 @@
   const OPACITY_KEY = "mrw_mrms_opacity";
   const FRAME_LIMIT_OPTS = [6, 12, 24, 36];
   let allFrames = [], frames = [], i = 0, timer = null;
-  let mapReady = false;
-  let loopHolding = false;
-  let displayedFrame = null;
   let frameLimit = parseInt(params.get("frameLimit") || localStorage.getItem(FRAME_LIMIT_KEY) || "36", 10);
   if (!FRAME_LIMIT_OPTS.includes(frameLimit)) frameLimit = 36;
   let radarOpacity = parseInt(params.get("opacity") || localStorage.getItem(OPACITY_KEY) || "52", 10);
@@ -183,6 +181,10 @@
   const idxEl = document.getElementById("idx");
   const tsEl = document.getElementById("ts");
   const frameStampEl = document.getElementById("frameStamp");
+  const speedEl = document.getElementById("speed");
+  const speedValEl = document.getElementById("speedVal");
+  speedEl.value = String(defaultSpeed);
+  speedValEl.textContent = String(defaultSpeed);
   frameLimitEl.value = String(frameLimit);
   frameLimitEl.onchange = () => {
     frameLimit = parseInt(frameLimitEl.value, 10);
@@ -194,110 +196,32 @@
     if (timer) { clearInterval(timer); timer = setInterval(advance, Number(document.getElementById("speed").value)); }
   };
 
-  function frameTimeLabel(name) {
-    const ts = name.replace(".png", "");
-    return new Date(Date.UTC(
-      parseInt(ts.slice(0, 4), 10),
-      parseInt(ts.slice(4, 6), 10) - 1,
-      parseInt(ts.slice(6, 8), 10),
-      parseInt(ts.slice(9, 11), 10),
-      parseInt(ts.slice(11, 13), 10)
-    )).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
-  }
-
-  function setFrame(n, force) {
+  function setFrame(n) {
     if (!frames.length) return;
     i = Math.max(0, Math.min(n, frames.length - 1));
     const name = frames[i];
-    if (!force && name === displayedFrame) return;
-    displayedFrame = name;
+    const url = frameBase + name + "?v=" + name;
     idxEl.textContent = i + 1;
     countEl.textContent = frames.length;
-    const timeStr = frameTimeLabel(name);
+    const ts = name.replace(".png", "");
+    const timeStr = new Date(Date.UTC(parseInt(ts.slice(0,4)), parseInt(ts.slice(4,6))-1, parseInt(ts.slice(6,8)), parseInt(ts.slice(9,11)), parseInt(ts.slice(11,13)))).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",hour12:true});
     tsEl.textContent = timeStr;
     frameStampEl.textContent = timeStr;
     const src = map.getSource("mrms");
-    if (src) src.updateImage({ url: frameBase + name + "?v=" + name });
+    if (src) src.updateImage({ url: url });
   }
 
   const LOOP_HOLD_MS = 1000;
-
-  function ensureAutoplay() {
-    if (!autoplay || timer || loopHolding || !frames.length || !mapReady) return;
-    document.getElementById("play").textContent = "Pause";
-    timer = setInterval(advance, Number(document.getElementById("speed").value));
-  }
-
   function advance() {
     if (i >= frames.length - 1) {
       clearInterval(timer);
       timer = null;
-      loopHolding = true;
       setTimeout(() => {
-        loopHolding = false;
-        setFrame(0, true);
-        if (autoplay) {
-          document.getElementById("play").textContent = "Pause";
-          timer = setInterval(advance, Number(document.getElementById("speed").value));
-        }
+        setFrame(0);
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
       }, LOOP_HOLD_MS);
     } else {
       setFrame(i + 1);
-    }
-  }
-
-  function applyManifestFrames(newAll) {
-    if (!newAll.length) return;
-    const curName = frames.length ? frames[i] : null;
-    allFrames = newAll;
-    const newFrames = allFrames.slice(-frameLimit);
-    if (timer && curName) {
-      const idx = newFrames.indexOf(curName);
-      if (idx >= 0) {
-        frames = newFrames;
-        i = idx;
-        countEl.textContent = frames.length;
-        idxEl.textContent = i + 1;
-        return;
-      }
-    }
-    const ourLast = frames.length ? frames[frames.length - 1] : null;
-    const hasNew = ourLast !== newAll[newAll.length - 1];
-    frames = newFrames;
-    countEl.textContent = frames.length;
-    if (!map.getSource("mrms") && frames.length && overlayCoords && mapReady) {
-      map.addSource("mrms", {
-        type: "image",
-        url: frameBase + frames[frames.length - 1] + "?v=" + frames[frames.length - 1],
-        coordinates: overlayCoords
-      });
-      map.addLayer({
-        id: "mrms-layer",
-        type: "raster",
-        source: "mrms",
-        paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 }
-      });
-      displayedFrame = null;
-      i = frames.length - 1;
-      setFrame(i, true);
-      return;
-    }
-    if (timer) {
-      i = Math.min(i, frames.length - 1);
-      setFrame(i);
-      return;
-    }
-    if (hasNew) {
-      displayedFrame = null;
-      i = frames.length - 1;
-      setFrame(i, true);
-    } else if (curName) {
-      const idx = frames.indexOf(curName);
-      i = idx >= 0 ? idx : frames.length - 1;
-      if (idx < 0) {
-        displayedFrame = null;
-        setFrame(i, true);
-      }
     }
   }
 
@@ -371,7 +295,6 @@
   });
 
   map.on("load", async () => {
-    mapReady = true;
     map.resize();
     if (locked) {
       map.dragPan.disable();
@@ -380,6 +303,10 @@
       map.touchZoomRotate.disable();
       map.boxZoom.disable();
       map.keyboard.disable();
+      const z = map.getZoom();
+      map.setMinZoom(z);
+      map.setMaxZoom(z);
+      map.once("idle", () => map.setMaxBounds(map.getBounds()));
     }
     const titleEl = document.getElementById("titleEl");
     if (titleEl) titleEl.textContent = "MRMS — Loading…";
@@ -412,7 +339,7 @@
     if (frames.length && overlayCoords) {
       map.addSource("mrms", {
         type: "image",
-        url: frameBase + frames[i] + "?v=" + frames[i],
+        url: frameBase + frames[i] + "?v=" + Date.now(),
         coordinates: overlayCoords
       });
       map.addLayer({
@@ -421,10 +348,12 @@
         source: "mrms",
         paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 }
       });
-      setFrame(i, true);
-      ensureAutoplay();
+      setFrame(i);
+      if (autoplay && !timer) {
+        document.getElementById("play").textContent = "Pause";
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }
     }
-    ensureAutoplay();
     try {
       const alerts = await loadAlerts();
       addAlertLayers(alerts);
@@ -438,10 +367,28 @@
       const resp = await fetch(manifestUrl + "?t=" + Date.now(), { cache: "no-store" });
       if (!resp.ok) return;
       const mf = await resp.json();
+      const newAll = mf.frames || [];
       const t = document.getElementById("titleEl");
       if (t) t.textContent = "MRMS Composite Reflectivity";
-      applyManifestFrames(mf.frames || []);
-      ensureAutoplay();
+      if (newAll.length === 0) return;
+      const ourLast = frames.length ? frames[frames.length - 1] : null;
+      const hasNew = ourLast !== newAll[newAll.length - 1];
+      const cur = frames[i];
+      allFrames = newAll;
+      frames = allFrames.slice(-frameLimit);
+      countEl.textContent = frames.length;
+      if (!map.getSource("mrms") && frames.length && overlayCoords) {
+        map.addSource("mrms", { type: "image", url: frameBase + frames[frames.length - 1] + "?v=" + Date.now(), coordinates: overlayCoords });
+        map.addLayer({ id: "mrms-layer", type: "raster", source: "mrms", paint: { "raster-fade-duration": 0, "raster-opacity": radarOpacity / 100 } });
+        i = frames.length - 1;
+        setFrame(i);
+      } else if (timer) {
+        i = Math.min(i, frames.length - 1);
+        setFrame(i);
+      } else {
+        if (hasNew) { i = frames.length - 1; setFrame(i); }
+        else { const idx = frames.indexOf(cur); i = idx >= 0 ? idx : frames.length - 1; if (idx < 0) setFrame(i); }
+      }
     } catch (_) {}
   }
 
@@ -470,10 +417,25 @@
   window.addEventListener("resize", () => map.resize());
   document.addEventListener("fullscreenchange", () => map.resize());
 
-  document.getElementById("speed").value = String(defaultSpeed);
-  document.getElementById("speedVal").textContent = String(defaultSpeed);
+  document.getElementById("speedVal").textContent = document.getElementById("speed").value;
   setInterval(refreshManifest, locked ? POLL_MS_EMBED : POLL_MS);
   if (!locked) setTimeout(refreshManifest, 2000);
+  if (locked && autoplay) {
+    let lastStamp = "";
+    let lastChange = Date.now();
+    setInterval(() => {
+      const s = frameStampEl.textContent;
+      if (s && s !== lastStamp) { lastStamp = s; lastChange = Date.now(); return; }
+      if (frames.length <= 1 || !map.getSource("mrms")) return;
+      if (Date.now() - lastChange < 10000) return;
+      lastChange = Date.now();
+      if (!timer) {
+        document.getElementById("play").textContent = "Pause";
+        timer = setInterval(advance, Number(document.getElementById("speed").value));
+      }
+      setFrame((i + 1) % frames.length);
+    }, 2500);
+  }
   setInterval(async () => { const a = await loadAlerts(); if (a) addAlertLayers(a); }, ALERT_POLL_MS);
 })();
 </script>

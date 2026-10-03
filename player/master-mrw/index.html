@@ -565,10 +565,10 @@
 
       <!-- Right column -->
       <div class="tile radarTile" id="radarTile" style="grid-column:3; grid-row:1;">
-        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&speed=215&v=7" title="KCLX Radar"></iframe>
+        <iframe id="radarIframe" src="/player/kclx-mapbox/?viewport=0.38&frameLimit=36&autoplay=1&locked=1&speed=215&v=9" title="KCLX Radar"></iframe>
       </div>
       <div class="tile radarTile regionTile" style="grid-column:3; grid-row:2;">
-        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&speed=215&opacity=42&v=3" title="MRMS Eastern US"></iframe>
+        <iframe id="regionIframe" src="/player/mrms/?region=eastern_us&frameLimit=36&autoplay=1&locked=1&speed=215&opacity=42&v=5" title="MRMS Eastern US"></iframe>
       </div>
     </main>
     <div class="verBadge" aria-hidden="true">LOCKED</div>
@@ -585,14 +585,17 @@
     function setText(id, v) { const el = $(id); if (el && v != null) el.textContent = String(v); }
     function setNum(id, n) { const el = $(id); if (el) el.textContent = (n != null && Number.isFinite(n)) ? Math.round(n) : "--"; }
 
-    // Layout diagnostics — actual dimensions (source of truth)
+    // Layout diagnostics — ?layoutDebug=1 only (wall display stays clean)
+    const layoutDebug = new URLSearchParams(location.search).has("layoutDebug");
     let dataOk = false;
     requestAnimationFrame(() => {
       const leftBoxes = document.querySelectorAll(".leftGrid .tile");
       const leftGrid = document.querySelector(".leftGrid");
       const radar = document.querySelector(".radarTile");
       const el = document.getElementById("sizeDebug");
+      if (!layoutDebug && el) el.style.display = "none";
       function updateDebug() {
+        if (!layoutDebug) return;
         let msg = "";
         if (leftGrid) {
           const lr = leftGrid.getBoundingClientRect();
