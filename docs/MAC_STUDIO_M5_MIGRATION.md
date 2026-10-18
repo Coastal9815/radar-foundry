@@ -183,18 +183,70 @@ tailscale status
   Affinity, superwhisper, ExpressVPN, RadarScope, Jump Desktop Connect,
   QZ Tray.
 
-### Identity cleanup
+### Network identity continuity (audited 2026-10-18)
 
-- Tailscale registers the M5 as a new node (likely `scotts-mac-studio-1`).
-  Remove the old M4 node in the admin console, rename the M5 node to
-  `scotts-mac-studio`, then update `HostName` under `Host macstudio` in
-  `~/.ssh/config` to the new 100.x address (or switch it to MagicDNS).
-- Any host that has the M4 in `known_hosts` (wx-core, wx-i9, pi-wx, ha-nuc,
-  pi-filter) will warn on the new SSH host key if they SSH *into* this Mac.
-  Fix with `ssh-keygen -R` on that host. Outbound SSH from the M5 is
-  unaffected (private keys migrate).
-- LAN IPs 192.168.2.108 / 192.168.0.212 stay with the Sonnet NIC. If the M5's
-  built-in Ethernet is used instead, add DHCP reservations for its MAC.
+**How this Mac is addressed today**
+
+| Address | Interface | MAC | Assignment | Notes |
+|---|---|---|---|---|
+| **192.168.0.212** | Sonnet Solo 10G (TB, `en11`) | `00:30:93:1d:0a:f4` | DHCP from UniFi gateway 192.168.1.1, 24 h lease | **Default route. Every SSH/HTTP session to the stack originates from this IP** (verified: `$SSH_CLIENT` on wx-core, wx-i9, pi-wx, ha-nuc, pi-filter all show 192.168.0.212). Documented in Riverwatch `docs/network-topology.md` as Pro Max SFP+2. |
+| 192.168.2.108 | Wi-Fi (`en1`) | `76:01:cb:19:cd:0e` (**Private Wi-Fi Address**, randomized) | DHCP, 24 h lease | Backup path only. Nothing in any repo or host references it. Will change on the M5 regardless. |
+| 100.99.92.89 | Tailscale `scotts-mac-studio.tailf04fbe.ts.net` | — | Tailnet | Referenced only by `Host macstudio` in this Mac's own `~/.ssh/config`. Key expiry 2027-03-22. |
+
+The LAN is one flat /22 (`255.255.252.0`, gateway 192.168.1.1), so
+192.168.0.x / 1.x / 2.x / 3.x are the same broadcast domain; the
+"1.x ↔ 2.x routing" language in older docs is really just the one subnet.
+
+**What references this Mac from the stack side: nothing.** Audited
+`~/.ssh/config`, `/etc/hosts`, launchd/systemd units, crontabs, nginx,
+WeeWX, HA `/config`, pi-filter `~/monitor`, radar-foundry `bin/conf/docs` on
+wx-core, wx-i9, pi-wx, ha-nuc, pi-filter, plus both Cursor repos and the
+agent bus. No IP allowlists (wx-i9 UFW inactive; HA has no `http:`
+allowlist). All access is outbound from this Mac using `~/.ssh/id_ed25519`,
+which Migration Assistant carries, and the public key is already in
+`authorized_keys` on wx-core (6 entries), wx-i9 (3), pi-wx (5), pi-filter (3).
+
+**Why the M5 keeps 192.168.0.212 automatically:** the address is bound to the
+Sonnet NIC's MAC, and the Sonnet moves to the M5. UniFi identifies the client
+by MAC, so the client name, any Fixed IP, and any firewall rules follow it.
+The M5 will come up as the same client on the same port.
+
+**Do before migration day (UniFi Network app → Client Devices → "Scott's
+Mac Studio" / `00:30:93:1d:0a:f4`):**
+- [ ] Confirm or set **Fixed IP = 192.168.0.212**. Today it is a sticky
+      24 h lease, which has been stable but is not pinned. Pinning it removes
+      the only way this could drift.
+
+**Migration-day order for networking:**
+1. During Migration Assistant the M5 may use built-in Ethernet or Wi-Fi; it
+   will get a throwaway address. Fine.
+2. After MA, move the Sonnet NIC to the M5 **before** verifying the stack.
+   Confirm: `ipconfig getifaddr en<N>` → 192.168.0.212 and
+   `route -n get default | grep interface` → the Sonnet device.
+3. Set Network service order so the Sonnet is first. Turn Wi-Fi off (or leave
+   it as a non-default backup) to avoid dual-homing.
+4. Verify outbound from the M5: `ssh wx-core 'echo $SSH_CLIENT'` → must
+   print `192.168.0.212`. Repeat for wx-i9, pi-wx, ha-nuc, pi@192.168.1.124.
+5. Verify the HA REST calls the smart-home scripts use:
+   `curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $HA_MAIN_TOKEN" http://192.168.1.230:8123/api/` → `200`.
+
+**Tailscale:** the M5 registers as a new node (`scotts-mac-studio-1`). In the
+admin console: delete the M4 node, rename the M5 to `scotts-mac-studio`, and
+use *Edit machine IPv4* to assign **100.99.92.89** so the `macstudio` alias
+and MagicDNS name keep working unchanged. Otherwise update `~/.ssh/config`.
+
+**Inbound to this Mac:** Remote Login (22), Screen Sharing (5900), SMB (445),
+Dropbox LAN sync, QZ Tray (8181/8182), AirPlay receiver are all enabled.
+No stack host connects *into* this Mac. Jump Desktop Connect will need the
+M5 registered as a new computer. If anything on the laptop has the M4 in
+`known_hosts`, the new host key will warn once; `ssh-keygen -R` there.
+
+**Verification script (run on the M5 after step 2):**
+```
+for h in wx-core wx-i9 pi-wx ha-nuc; do printf '%-8s ' $h; ssh -o ConnectTimeout=5 $h 'echo $SSH_CLIENT' | awk '{print $1}'; done
+ssh -o ConnectTimeout=5 pi@192.168.1.124 'echo $SSH_CLIENT' | awk '{print "pi-filter "$1}'
+```
+Every line must end in `192.168.0.212`.
 
 ---
 
@@ -218,3 +270,8 @@ LAN IPs do not. pi-filter monitor does not currently check this workstation.
 - 2026-10-18 11:13 — Inventory captured. `pg_dumpall` taken to CCP_Dropbox.
   Decisions: Mac-to-Mac MA; selective cleanup approved in principle; M5 takes
   over the same name and identity.
+- 2026-10-18 11:20 — Brewfile + dotfile/credential copies staged in the
+  backup folder. Network identity audited across all stack hosts: no
+  references to this Mac anywhere; all access is outbound from 192.168.0.212
+  on the Sonnet NIC, which moves with the dock. Action for Scott: pin Fixed
+  IP 192.168.0.212 to `00:30:93:1d:0a:f4` in UniFi.
