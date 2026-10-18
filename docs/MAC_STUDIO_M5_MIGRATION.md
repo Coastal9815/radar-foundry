@@ -211,11 +211,9 @@ Sonnet NIC's MAC, and the Sonnet moves to the M5. UniFi identifies the client
 by MAC, so the client name, any Fixed IP, and any firewall rules follow it.
 The M5 will come up as the same client on the same port.
 
-**Do before migration day (UniFi Network app → Client Devices → "Scott's
-Mac Studio" / `00:30:93:1d:0a:f4`):**
-- [ ] Confirm or set **Fixed IP = 192.168.0.212**. Today it is a sticky
-      24 h lease, which has been stable but is not pinned. Pinning it removes
-      the only way this could drift.
+**UniFi Fixed IP — CONFIRMED 2026-10-18.** UniFi client `ScottsMacStudio 0a:f4`
+(`00:30:93:1d:0a:f4`) has **Fixed IP Address = 192.168.0.212** enabled.
+Nothing to do here; the M5 inherits it the moment the Sonnet NIC is plugged in.
 
 **Migration-day order for networking:**
 1. During Migration Assistant the M5 may use built-in Ethernet or Wi-Fi; it
@@ -273,5 +271,6 @@ LAN IPs do not. pi-filter monitor does not currently check this workstation.
 - 2026-10-18 11:20 — Brewfile + dotfile/credential copies staged in the
   backup folder. Network identity audited across all stack hosts: no
   references to this Mac anywhere; all access is outbound from 192.168.0.212
-  on the Sonnet NIC, which moves with the dock. Action for Scott: pin Fixed
-  IP 192.168.0.212 to `00:30:93:1d:0a:f4` in UniFi.
+  on the Sonnet NIC, which moves with the dock.
+- 2026-10-18 11:29 — Scott confirmed UniFi already has Fixed IP 192.168.0.212
+  on `00:30:93:1d:0a:f4`. LAN identity is fully pinned.
