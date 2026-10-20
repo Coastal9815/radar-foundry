@@ -274,3 +274,10 @@ LAN IPs do not. pi-filter monitor does not currently check this workstation.
   on the Sonnet NIC, which moves with the dock.
 - 2026-10-18 11:29 — Scott confirmed UniFi already has Fixed IP 192.168.0.212
   on `00:30:93:1d:0a:f4`. LAN identity is fully pinned.
+- 2026-10-20 15:05 — Migration day prep. macOS still 26.6.2. Fresh
+  `pg16_dumpall_20261020_1505.sql` (4.2 GB) taken. Cleanup (§3b) executed:
+  simulators, DerivedData, npm/Gradle/Android caches, `~/wx`,
+  `~/.cursor-server`, user caches, `brew cleanup` — ~60 GB of live files
+  removed (Data volume still shows 465 GB because 9 APFS local snapshots hold
+  the blocks; MA copies live files only, so the transfer shrinks regardless).
+  Cursor state verified intact (91 GB + 679 MB).
